@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from .base import Strategy
 from ..data_models.market import MarketData, Feature
 from ..data_models.trading import Position, Portfolio
+from ...utils.logging import logger
 
 
 class MeanReversionStrategy(Strategy):
