@@ -40,8 +40,8 @@ class BacktestEngine:
             exposure_net=Decimal("0"),
             drawdown=Decimal("0"),
             peak_equity=self.initial_capital,
-            pnl_total=Decimal("0"),
-            pnl_daily=Decimal("0"),
+            total_pnl=Decimal("0"),
+            daily_pnl=Decimal("0"),
             positions=[],
             timestamp=datetime.now(timezone.utc)
         )
@@ -351,12 +351,12 @@ class BacktestEngine:
         # if not self.risk_manager.check_trade_allowed(signal):
         #     return
         
-        # Calculate position size
+        # Calculate position size in dollars
         position_size = self._calculate_position_size(price, quantity)
         
         # Check if we have enough cash
         if position_size > self.portfolio.cash:
-            logger.warning(f"Insufficient cash for {symbol} buy order")
+            logger.warning(f"Insufficient cash for {symbol} buy order. Need ${position_size:,.2f}, have ${self.portfolio.cash:,.2f}")
             return
         
         # Create fill
@@ -387,6 +387,8 @@ class BacktestEngine:
             existing_position.average_cost = total_cost / total_quantity
             existing_position.quantity = total_quantity
             existing_position.last_update_timestamp = timestamp
+            # Update market value immediately
+            existing_position.market_value = price * abs(total_quantity)
         else:
             # Create new position
             position = Position(
@@ -394,7 +396,7 @@ class BacktestEngine:
                 symbol=symbol,
                 quantity=Decimal(str(quantity)),
                 average_cost=price,
-                market_value=position_size,
+                market_value=position_size,  # Initial market value equals cost
                 entry_timestamp=timestamp,
                 last_update_timestamp=timestamp
             )
@@ -413,7 +415,7 @@ class BacktestEngine:
         })
         
         self.total_trades += 1
-        logger.info(f"Executed BUY order: {quantity} {symbol} @ {price}")
+        logger.info(f"Executed BUY order: {quantity} {symbol} @ ${price:,.2f} for ${position_size:,.2f}")
     
     async def _execute_sell_order(self, signal: Dict[str, Any], timestamp: datetime):
         """Execute a sell order"""
@@ -436,10 +438,10 @@ class BacktestEngine:
         
         # Check if we have enough quantity
         if abs(position.quantity) < quantity:
-            logger.warning(f"Insufficient quantity for {symbol} sell order")
+            logger.warning(f"Insufficient quantity for {symbol} sell order. Have {abs(position.quantity)}, need {quantity}")
             return
         
-        # Calculate P&L
+        # Calculate P&L correctly
         cost_basis = position.average_cost * Decimal(str(quantity))
         sale_value = price * Decimal(str(quantity))
         pnl = sale_value - cost_basis
@@ -457,13 +459,19 @@ class BacktestEngine:
         
         # Update portfolio
         self.portfolio.cash += sale_value
-        self.portfolio.pnl_total += pnl
+        self.portfolio.total_pnl += pnl
         
         # Update position
         if position.quantity > 0:  # Long position
             position.quantity -= Decimal(str(quantity))
         else:  # Short position
             position.quantity += Decimal(str(quantity))
+        
+        # Update position market value
+        if position.quantity != 0:
+            position.market_value = price * abs(position.quantity)
+        else:
+            position.market_value = Decimal("0")
         
         # Remove position if fully closed
         if position.quantity == 0:
@@ -492,7 +500,7 @@ class BacktestEngine:
         else:
             self.losing_trades += 1
         
-        logger.info(f"Executed SELL order: {quantity} {symbol} @ {price}, P&L: {pnl}")
+        logger.info(f"Executed SELL order: {quantity} {symbol} @ ${price:,.2f}, P&L: ${pnl:+,.2f}")
     
     def _calculate_position_size(self, price: Decimal, quantity: float) -> Decimal:
         """Calculate the dollar value of a position"""
@@ -501,6 +509,7 @@ class BacktestEngine:
     def _update_portfolio(self, market_data: MarketData, timestamp: datetime):
         """Update portfolio with current market data"""
         total_market_value = Decimal("0")
+        total_unrealized_pnl = Decimal("0")
         
         for symbol, bars in market_data.bars.items():
             if not bars:
@@ -511,21 +520,32 @@ class BacktestEngine:
             # Find position for this symbol
             for position in self.portfolio.positions:
                 if position.symbol == symbol:
-                    # Update market value
-                    position.market_value = current_price * abs(position.quantity)
+                    # Calculate current market value correctly
+                    if position.quantity > 0:  # Long position
+                        position.market_value = current_price * abs(position.quantity)
+                        unrealized_pnl = position.market_value - (position.average_cost * abs(position.quantity))
+                    else:  # Short position
+                        position.market_value = current_price * abs(position.quantity)
+                        unrealized_pnl = (position.average_cost * abs(position.quantity)) - position.market_value
+                    
+                    position.unrealized_pnl = unrealized_pnl
                     position.last_update_timestamp = timestamp
                     total_market_value += position.market_value
+                    total_unrealized_pnl += unrealized_pnl
         
-        # Update portfolio equity
+        # Update portfolio equity CORRECTLY
+        # Equity = Cash + Market Value of Positions
+        # NOT including unrealized P&L in equity (that's already in market value)
         self.portfolio.equity = self.portfolio.cash + total_market_value
         
         # Update drawdown
         if self.portfolio.equity > self.portfolio.peak_equity:
             self.portfolio.peak_equity = self.portfolio.equity
         
-        current_drawdown = (self.portfolio.peak_equity - self.portfolio.equity) / self.portfolio.peak_equity
-        if current_drawdown > self.portfolio.drawdown:
-            self.portfolio.drawdown = current_drawdown
+        if self.portfolio.peak_equity > 0:
+            current_drawdown = (self.portfolio.peak_equity - self.portfolio.equity) / self.portfolio.peak_equity
+            if current_drawdown > self.portfolio.drawdown:
+                self.portfolio.drawdown = current_drawdown
     
     def _risk_management_checks(self, timestamp: datetime):
         """Perform risk management checks"""
@@ -577,7 +597,7 @@ class BacktestEngine:
                 'symbol': pos.symbol,
                 'quantity': float(pos.quantity),
                 'market_value': float(pos.market_value),
-                'unrealized_pnl': float(pos.market_value - (pos.average_cost * abs(pos.quantity)))
+                'unrealized_pnl': float(pos.unrealized_pnl)
             })
         
         # Get trades for this hour
@@ -628,16 +648,35 @@ class BacktestEngine:
                 parameters=self.strategy.config
             )
         
+        # VALIDATE PORTFOLIO STATE
+        # Ensure portfolio equity is calculated correctly
+        total_market_value = sum(pos.market_value for pos in self.portfolio.positions)
+        calculated_equity = self.portfolio.cash + total_market_value
+        
+        # If there's a discrepancy, log it and use the calculated value
+        if abs(calculated_equity - self.portfolio.equity) > Decimal("0.01"):
+            logger.warning(f"Portfolio equity discrepancy detected: stored={self.portfolio.equity}, calculated={calculated_equity}")
+            self.portfolio.equity = calculated_equity
+        
         # Calculate returns
         initial_equity = self.equity_curve[0]['equity']
-        final_equity = self.equity_curve[-1]['equity']
-        total_return = (final_equity - initial_equity) / initial_equity
+        final_equity = float(self.portfolio.equity)
+        total_return = (final_equity - initial_equity) / initial_equity if initial_equity > 0 else 0.0
+        
+        # Validate total return is reasonable (not more than 1000% in a week)
+        if total_return > 10.0:  # More than 1000%
+            logger.error(f"Unrealistic total return detected: {total_return:.2%}. This indicates a calculation error.")
+            total_return = 0.0  # Reset to prevent misleading results
         
         # Calculate annualized return
         if self.start_time and self.end_date:
             duration_days = (self.end_date - self.start_time).days
             if duration_days > 0:
                 annualized_return = ((1 + total_return) ** (365 / duration_days)) - 1
+                # Validate annualized return
+                if abs(annualized_return) > 100.0:  # More than 10000% annualized
+                    logger.error(f"Unrealistic annualized return detected: {annualized_return:.2%}. This indicates a calculation error.")
+                    annualized_return = 0.0
             else:
                 annualized_return = 0.0
         else:
@@ -658,23 +697,40 @@ class BacktestEngine:
         else:
             sharpe_ratio = 0.0
         
-        # Calculate win rate
-        win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0.0
+        # Calculate max drawdown
+        max_drawdown = 0.0
+        peak = initial_equity
+        for equity_point in self.equity_curve:
+            equity = equity_point['equity']
+            if equity > peak:
+                peak = equity
+            drawdown = (peak - equity) / peak if peak > 0 else 0
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+        
+        # Calculate win rate and profit factor
+        if self.total_trades > 0:
+            win_rate = self.winning_trades / self.total_trades
+        else:
+            win_rate = 0.0
         
         # Calculate profit factor
-        winning_pnl = sum(trade.get('pnl', 0) for trade in self.trades if trade.get('pnl', 0) > 0)
-        losing_pnl = abs(sum(trade.get('pnl', 0) for trade in self.trades if trade.get('pnl', 0) < 0))
-        profit_factor = winning_pnl / losing_pnl if losing_pnl > 0 else 0.0
+        total_profit = sum(trade.get('pnl', 0) for trade in self.trades if trade.get('pnl', 0) > 0)
+        total_loss = abs(sum(trade.get('pnl', 0) for trade in self.trades if trade.get('pnl', 0) < 0))
         
-        # Get max drawdown
-        max_drawdown = max(equity['drawdown'] for equity in self.equity_curve)
+        if total_loss > 0:
+            profit_factor = total_profit / total_loss
+        else:
+            profit_factor = 0.0
+        
+        logger.info(f"Results calculated: Initial=${initial_equity:,.2f}, Final=${final_equity:,.2f}, Return={total_return:.2%}")
         
         return BacktestResult(
             strategy_name=self.strategy.name,
             start_date=self.start_time,
             end_date=self.end_date,
             initial_capital=float(self.initial_capital),
-            final_capital=float(self.portfolio.equity),
+            final_capital=final_equity,
             total_return=total_return,
             annualized_return=annualized_return,
             sharpe_ratio=sharpe_ratio,
@@ -684,7 +740,7 @@ class BacktestEngine:
             profit_factor=profit_factor,
             equity_curve=self.equity_curve,
             trades=self.trades,
-            hourly_pnl=self.hourly_pnl,  # New: Include hourly P&L
-            portfolio_snapshots=self.portfolio_snapshots,  # New: Include portfolio snapshots
+            hourly_pnl=self.hourly_pnl,
+            portfolio_snapshots=self.portfolio_snapshots,
             parameters=self.strategy.config
         )
