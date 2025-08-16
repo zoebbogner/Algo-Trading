@@ -11,7 +11,7 @@ sys.path.insert(0, 'src')
 
 from src.core.backtesting.engine import BacktestEngine
 from src.core.backtesting.analyzer import PerformanceAnalyzer
-from src.core.strategies.mean_reversion import MeanReversionStrategy
+from src.core.strategy.mean_reversion import MeanReversionStrategy
 from src.core.risk.manager import RiskManager
 from src.adapters.data.manager import DataManager
 
@@ -36,8 +36,24 @@ async def test_backtest_engine():
     # Initialize components
     print("🔧 Initializing components...")
     data_manager = DataManager(config)
-    risk_manager = RiskManager()
-    strategy = MeanReversionStrategy()
+    
+    # Risk manager config
+    risk_config = {
+        "max_position_size": 0.1,
+        "max_gross_exposure": 0.5,
+        "daily_mdd_cut": 0.15,
+        "per_trade_stop": 0.05
+    }
+    risk_manager = RiskManager(risk_config)
+    
+    # Strategy config
+    strategy_config = {
+        "rsi_period": 14,
+        "rsi_oversold": 30,
+        "rsi_overbought": 70,
+        "position_size": 0.1
+    }
+    strategy = MeanReversionStrategy(strategy_config)
     
     # Test parameters
     symbols = ["BTC/USDT", "ETH/USDT"]
@@ -166,12 +182,10 @@ async def test_multiple_strategies():
     strategy_configs = [
         {
             "name": "Mean Reversion (Conservative)",
-            "strategy": MeanReversionStrategy(),
             "params": {"rsi_oversold": 30, "rsi_overbought": 70, "position_size": 0.05}
         },
         {
             "name": "Mean Reversion (Aggressive)",
-            "strategy": MeanReversionStrategy(),
             "params": {"rsi_oversold": 25, "rsi_overbought": 75, "position_size": 0.10}
         }
     ]
@@ -180,14 +194,30 @@ async def test_multiple_strategies():
     
     try:
         data_manager = DataManager(config)
-        risk_manager = RiskManager()
+        
+        # Risk manager config
+        risk_config = {
+            "max_position_size": 0.1,
+            "max_gross_exposure": 0.5,
+            "daily_mdd_cut": 0.15,
+            "per_trade_stop": 0.05
+        }
+        risk_manager = RiskManager(risk_config)
         
         for config_item in strategy_configs:
             print(f"\n🧪 Testing: {config_item['name']}")
             print("-" * 40)
             
             # Configure strategy
-            strategy = config_item['strategy']
+            strategy_config = {
+                "rsi_period": 14,
+                "rsi_oversold": 30,
+                "rsi_overbought": 70,
+                "position_size": 0.1
+            }
+            strategy = MeanReversionStrategy(strategy_config)
+            
+            # Override with test parameters
             for param, value in config_item['params'].items():
                 if hasattr(strategy, param):
                     setattr(strategy, param, value)
@@ -285,14 +315,30 @@ async def test_parameter_optimization():
     
     try:
         data_manager = DataManager(config)
-        risk_manager = RiskManager()
+        
+        # Risk manager config
+        risk_config = {
+            "max_position_size": 0.1,
+            "max_gross_exposure": 0.5,
+            "daily_mdd_cut": 0.15,
+            "per_trade_stop": 0.05
+        }
+        risk_manager = RiskManager(risk_config)
         
         for i, params in enumerate(param_combinations):
             print(f"\n🧪 Testing Parameter Set {i+1}: {params}")
             print("-" * 40)
             
             # Create strategy with parameters
-            strategy = MeanReversionStrategy()
+            strategy_config = {
+                "rsi_period": 14,
+                "rsi_oversold": 30,
+                "rsi_overbought": 70,
+                "position_size": 0.1
+            }
+            strategy = MeanReversionStrategy(strategy_config)
+            
+            # Override with test parameters
             for param, value in params.items():
                 if hasattr(strategy, param):
                     setattr(strategy, param, value)
