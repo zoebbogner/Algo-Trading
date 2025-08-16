@@ -169,12 +169,17 @@ class BinanceAdapter(DataAdapter):
             ccxt_symbol = symbol.replace('/', '')
             order_book = await self.exchange.fetch_order_book(ccxt_symbol, depth)
             
-            if order_book:
+            if order_book and 'bids' in order_book and 'asks' in order_book and 'timestamp' in order_book:
+                # Validate timestamp exists and is not None
+                timestamp = order_book.get('timestamp')
+                if timestamp is None:
+                    timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+                
                 # Convert to our format
                 return {
                     'bids': [[Decimal(str(price)), Decimal(str(amount))] for price, amount in order_book['bids']],
                     'asks': [[Decimal(str(price)), Decimal(str(amount))] for price, amount in order_book['asks']],
-                    'timestamp': datetime.fromtimestamp(order_book['timestamp'] / 1000, tz=timezone.utc),
+                    'timestamp': datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc),
                     'symbol': symbol
                 }
             
