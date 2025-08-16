@@ -1,0 +1,49 @@
+# Live trading broker configuration
+# Used for real trading with actual capital
+
+broker:
+  type: "live"
+  name: "LiveBroker"
+  
+  # Live trading settings
+  initial_capital: 100000  # USD (will be overridden by actual balance)
+  commission_rate: 0.001   # 0.1% (actual broker rate)
+  spread_bps: 2            # 0.02% spread (real market)
+  slippage_model: "market_impact"
+  slippage_bps: 1          # 0.01% slippage (realistic)
+  
+  # Market data (real)
+  data_source: "live"
+  tick_size: 0.01          # Minimum price increment
+  lot_size: 0.001          # Minimum quantity increment
+  
+  # Risk limits (live trading - conservative)
+  max_order_size: 25000    # USD (25% of capital)
+  max_daily_trades: 100
+  max_open_positions: 5
+  
+  # Latency (real)
+  order_latency_ms: 200
+  data_latency_ms: 100
+  
+  # Features
+  supports_market_orders: true
+  supports_limit_orders: true
+  supports_stop_orders: true
+  supports_margin: false
+  supports_shorting: false
+  
+  # Real broker integration
+  real_broker:
+    name: "ccxt_binance"  # or other supported broker
+    sandbox: false
+    rate_limit: true
+    api_key_env: "BROKER_KEY_ID"
+    secret_env: "BROKER_SECRET"
+    base_url_env: "BROKER_BASE_URL"
+  
+  # Safety features
+  kill_switch_enabled: true
+  max_daily_loss: 0.02    # 2% daily loss limit
+  emergency_stop_enabled: true
+  position_monitoring_interval_seconds: 5

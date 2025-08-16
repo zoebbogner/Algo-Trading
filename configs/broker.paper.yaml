@@ -1,0 +1,40 @@
+# Paper trading broker configuration
+# Used for testing with real market data but simulated execution
+
+broker:
+  type: "paper"
+  name: "PaperBroker"
+  
+  # Paper trading settings
+  initial_capital: 100000  # USD
+  commission_rate: 0.001   # 0.1%
+  spread_bps: 5            # 0.05% spread (tighter than sim)
+  slippage_model: "realistic"
+  slippage_bps: 3          # 0.03% slippage
+  
+  # Market data (real)
+  data_source: "live"
+  tick_size: 0.01          # Minimum price increment
+  lot_size: 0.001          # Minimum quantity increment
+  
+  # Risk limits (paper trading)
+  max_order_size: 50000    # USD
+  max_daily_trades: 500
+  max_open_positions: 20
+  
+  # Latency (realistic)
+  order_latency_ms: 100
+  data_latency_ms: 50
+  
+  # Features
+  supports_market_orders: true
+  supports_limit_orders: true
+  supports_stop_orders: true
+  supports_margin: false
+  supports_shorting: false
+  
+  # Real broker integration (for data only)
+  real_broker:
+    name: "ccxt_binance"  # or other supported broker
+    sandbox: true
+    rate_limit: true

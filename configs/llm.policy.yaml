@@ -1,0 +1,86 @@
+# LLM policy configuration
+# Defines how the LLM makes trading decisions and policy recommendations
+
+llm:
+  name: "PolicyLLM"
+  version: "1.0.0"
+  description: "LLM-powered policy recommendations for trading decisions"
+  
+  # Model configuration
+  model:
+    instruction_path: "/Users/zoe/Library/Application Support/nomic.ai/GPT4All/Meta-Llama-3-8B-Instruct.Q4_0.gguf"
+    embeddings_path: "/Applications/gpt4all/bin/gpt4all.app/Contents/Resources/nomic-embed-text-v1.5.f16.gguf"
+    max_tokens: 2048
+    temperature: 0.1
+    top_p: 0.9
+    top_k: 40
+    
+  # Context and prompts
+  context:
+    max_history_bars: 100
+    max_history_decisions: 50
+    include_metrics: true
+    include_positions: true
+    include_risk_events: true
+    
+  # Decision domains
+  domains:
+    risk_management:
+      - "position_sizing"
+      - "stop_loss_adjustment"
+      - "exposure_reduction"
+      - "circuit_breaker_triggers"
+      
+    strategy_adjustment:
+      - "entry_criteria"
+      - "exit_criteria"
+      - "feature_weights"
+      - "parameter_tuning"
+      
+    portfolio_optimization:
+      - "rebalancing_timing"
+      - "correlation_management"
+      - "sector_allocation"
+      - "cash_management"
+      
+    market_regime:
+      - "volatility_regime"
+      - "trend_regime"
+      - "liquidity_regime"
+      - "correlation_regime"
+      
+  # Output format
+  output:
+    format: "json"
+    required_fields:
+      - "decision_type"
+      - "confidence"
+      - "reasoning"
+      - "actions"
+      - "risk_assessment"
+      
+  # Decision thresholds
+  thresholds:
+    min_confidence: 0.7
+    max_actions_per_decision: 5
+    min_reasoning_length: 50
+    
+  # Caching and performance
+  cache:
+    enabled: true
+    ttl_hours: 1
+    max_cache_size: 1000
+    
+  # Monitoring and logging
+  monitoring:
+    log_all_decisions: true
+    log_reasoning: true
+    log_confidence_scores: true
+    log_execution_results: true
+    
+  # Safety constraints
+  safety:
+    max_position_change: 0.2      # 20% max position change
+    max_exposure_change: 0.1      # 10% max exposure change
+    require_confirmation: false   # Require human confirmation
+    emergency_override: true      # Allow emergency overrides
