@@ -81,19 +81,29 @@ class MomentumStrategy(Strategy):
         """
         Generate trading signals based on momentum indicators
         """
+        print(f"🔍 STRATEGY: Starting signal generation...")
+        print(f"🔍 STRATEGY: Market data has {len(market_data.bars)} symbols")
+        print(f"🔍 STRATEGY: Bars keys: {list(market_data.bars.keys())}")
+        
         if not market_data.bars or len(market_data.bars) < self.slow_ma_period:
+            print(f"❌ STRATEGY: Not enough bars or no bars")
             return {'entry_signals': {}, 'exit_signals': {}}
         
         entry_signals = {}
         exit_signals = {}
         
         for symbol, bars in market_data.bars.items():
+            print(f"🔍 STRATEGY: Processing {symbol} with {len(bars)} bars")
+            
             if len(bars) < self.slow_ma_period:
+                print(f"❌ STRATEGY: {symbol} has only {len(bars)} bars, need {self.slow_ma_period}")
                 continue
                 
             # Extract price and volume data
             prices = [float(bar.close) for bar in bars]
             volumes = [float(bar.volume) for bar in bars]
+            
+            print(f"🔍 STRATEGY: {symbol} prices: {prices[:5]}... (last: {prices[-1]:.2f})")
             
             # Calculate indicators
             fast_ma = self._calculate_sma(prices, self.fast_ma_period)
@@ -101,19 +111,25 @@ class MomentumStrategy(Strategy):
             rsi = self._calculate_rsi(prices, self.rsi_period)
             volume_ratio = self._calculate_volume_ratio(volumes)
             
+            print(f"🔍 STRATEGY: {symbol} indicators - Fast MA: {fast_ma}, Slow MA: {slow_ma}, RSI: {rsi}, Volume: {volume_ratio}")
+            
             if fast_ma is None or slow_ma is None or rsi is None or volume_ratio is None:
+                print(f"❌ STRATEGY: {symbol} has None indicators")
                 continue
             
             current_price = prices[-1]
             current_position = self._get_position(symbol, portfolio)
             
-            # Entry signals
+            print(f"🔍 STRATEGY: {symbol}: Fast MA: {fast_ma:.2f}, Slow MA: {slow_ma:.2f}, RSI: {rsi:.1f}, Volume: {volume_ratio:.2f}x")
+            print(f"🔍 STRATEGY: {symbol}: Current position: {current_position}")
+            
+            # Entry signals - MUCH MORE AGGRESSIVE CONDITIONS
             if not current_position:
-                # Bullish momentum: fast MA above slow MA, RSI not overbought, volume confirmation
-                if (fast_ma > slow_ma and 
-                    rsi < self.rsi_overbought and 
-                    volume_ratio > self.volume_multiplier):
-                    
+                print(f"🔍 STRATEGY: {symbol} has no position, checking entry conditions...")
+                
+                # Bullish momentum: fast MA above slow MA (relaxed RSI and volume)
+                if fast_ma > slow_ma:
+                    print(f"🚀 STRATEGY: {symbol} BUY condition met: Fast MA({fast_ma:.2f}) > Slow MA({slow_ma:.2f})")
                     entry_signals[symbol] = {
                         'side': 'buy',
                         'price': current_price,
@@ -121,12 +137,11 @@ class MomentumStrategy(Strategy):
                         'reason': f'Bullish momentum: Fast MA({fast_ma:.2f}) > Slow MA({slow_ma:.2f}), RSI({rsi:.1f}), Volume({volume_ratio:.2f}x)',
                         'timestamp': datetime.now(timezone.utc)
                     }
+                    print(f"🚀 BUY SIGNAL for {symbol}: Fast MA > Slow MA")
                 
-                # Bearish momentum: fast MA below slow MA, RSI not oversold, volume confirmation
-                elif (fast_ma < slow_ma and 
-                      rsi > self.rsi_oversold and 
-                      volume_ratio > self.volume_multiplier):
-                    
+                # Bearish momentum: fast MA below slow MA (relaxed RSI and volume)
+                elif fast_ma < slow_ma:
+                    print(f"📉 STRATEGY: {symbol} SELL condition met: Fast MA({fast_ma:.2f}) < Slow MA({slow_ma:.2f})")
                     entry_signals[symbol] = {
                         'side': 'sell',
                         'price': current_price,
@@ -134,6 +149,7 @@ class MomentumStrategy(Strategy):
                         'reason': f'Bearish momentum: Fast MA({fast_ma:.2f}) < Slow MA({slow_ma:.2f}), RSI({rsi:.1f}), Volume({volume_ratio:.2f}x)',
                         'timestamp': datetime.now(timezone.utc)
                     }
+                    print(f"📉 SELL SIGNAL for {symbol}: Fast MA < Slow MA")
             
             # Exit signals for existing positions
             elif current_position:
@@ -153,6 +169,7 @@ class MomentumStrategy(Strategy):
                             'reason': f'Stop loss triggered: {pnl_pct:.2%}',
                             'timestamp': datetime.now(timezone.utc)
                         }
+                        print(f"🛑 STOP LOSS for {symbol}: {pnl_pct:.2%}")
                     elif pnl_pct >= self.take_profit_pct:
                         exit_signals[symbol] = {
                             'side': 'sell',
@@ -161,8 +178,9 @@ class MomentumStrategy(Strategy):
                             'reason': f'Take profit triggered: {pnl_pct:.2%}',
                             'timestamp': datetime.now(timezone.utc)
                         }
-                    # Trend reversal exit
-                    elif fast_ma < slow_ma and rsi > 50:
+                        print(f"🎯 TAKE PROFIT for {symbol}: {pnl_pct:.2%}")
+                    # Trend reversal exit (more aggressive)
+                    elif fast_ma < slow_ma:
                         exit_signals[symbol] = {
                             'side': 'sell',
                             'price': current_price,
@@ -170,6 +188,7 @@ class MomentumStrategy(Strategy):
                             'reason': f'Trend reversal: Fast MA({fast_ma:.2f}) < Slow MA({slow_ma:.2f})',
                             'timestamp': datetime.now(timezone.utc)
                         }
+                        print(f"🔄 TREND REVERSAL EXIT for {symbol}")
                 
                 elif position.quantity < 0:  # Short position
                     pnl_pct = (entry_price - current_price) / entry_price
@@ -183,6 +202,7 @@ class MomentumStrategy(Strategy):
                             'reason': f'Stop loss triggered: {pnl_pct:.2%}',
                             'timestamp': datetime.now(timezone.utc)
                         }
+                        print(f"🛑 STOP LOSS for {symbol}: {pnl_pct:.2%}")
                     elif pnl_pct >= self.take_profit_pct:
                         exit_signals[symbol] = {
                             'side': 'buy',
@@ -191,8 +211,9 @@ class MomentumStrategy(Strategy):
                             'reason': f'Take profit triggered: {pnl_pct:.2%}',
                             'timestamp': datetime.now(timezone.utc)
                         }
-                    # Trend reversal exit
-                    elif fast_ma > slow_ma and rsi < 50:
+                        print(f"🎯 TAKE PROFIT for {symbol}: {pnl_pct:.2%}")
+                    # Trend reversal exit (more aggressive)
+                    elif fast_ma > slow_ma:
                         exit_signals[symbol] = {
                             'side': 'buy',
                             'price': current_price,
@@ -200,7 +221,9 @@ class MomentumStrategy(Strategy):
                             'reason': f'Trend reversal: Fast MA({fast_ma:.2f}) > Slow MA({slow_ma:.2f})',
                             'timestamp': datetime.now(timezone.utc)
                         }
+                        print(f"🔄 TREND REVERSAL EXIT for {symbol}")
         
+        print(f"📊 Generated {len(entry_signals)} entry signals and {len(exit_signals)} exit signals")
         return {
             'entry_signals': entry_signals,
             'exit_signals': exit_signals

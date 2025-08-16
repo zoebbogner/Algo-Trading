@@ -176,7 +176,9 @@ class BacktestEngine:
                     closest_bar = bar
             
             if closest_bar:
-                bars[symbol] = [closest_bar]
+                # Include ALL bars up to this timestamp for strategy calculations
+                bars_up_to_timestamp = [bar for bar in symbol_bars if bar.timestamp <= timestamp]
+                bars[symbol] = bars_up_to_timestamp
                 
                 # Calculate features for this bar
                 symbol_features = self._calculate_features(symbol, symbol_bars, closest_bar)
@@ -276,7 +278,12 @@ class BacktestEngine:
     def _generate_signals(self, market_data: MarketData) -> List[Dict[str, Any]]:
         """Generate trading signals from strategy"""
         try:
+            print(f"🔍 Generating signals for market data with {len(market_data.bars)} symbols")
+            print(f"🔍 Market data bars: {list(market_data.bars.keys())}")
+            
             strategy_signals = self.strategy.generate_signals(market_data, self.portfolio)
+            
+            print(f"🔍 Strategy returned signals: {strategy_signals}")
             
             signals = []
             
@@ -292,6 +299,7 @@ class BacktestEngine:
                     'timestamp': signal_data.get('timestamp'),
                     'details': signal_data
                 })
+                print(f"🚀 Processed entry signal for {symbol}")
             
             # Process exit signals
             for symbol, signal_data in strategy_signals.get('exit_signals', {}).items():
@@ -305,11 +313,14 @@ class BacktestEngine:
                     'timestamp': signal_data.get('timestamp'),
                     'details': signal_data
                 })
+                print(f"🔄 Processed exit signal for {symbol}")
             
+            print(f"🔍 Total signals generated: {len(signals)}")
             return signals
             
         except Exception as e:
             logger.error(f"Error generating signals: {e}")
+            print(f"❌ Error generating signals: {e}")
             return []
     
     async def _execute_trades(self, signals: List[Dict[str, Any]], timestamp: datetime):
@@ -350,12 +361,13 @@ class BacktestEngine:
         
         # Create fill
         fill = Fill(
-            price=price,
-            quantity=Decimal(str(quantity)),
-            fee=Decimal("0"),  # Simplified for backtesting
-            slippage=Decimal("0"),
-            value=position_size,
-            timestamp=timestamp
+            timestamp=timestamp,
+            symbol=symbol,
+            order_id=f"backtest_{self.total_trades}_{timestamp.timestamp()}",
+            fill_price=price,
+            fill_quantity=Decimal(str(quantity)),
+            fill_fee=Decimal("0"),  # Simplified for backtesting
+            timestamp_filled=timestamp
         )
         
         # Update portfolio
@@ -378,6 +390,7 @@ class BacktestEngine:
         else:
             # Create new position
             position = Position(
+                timestamp=timestamp,
                 symbol=symbol,
                 quantity=Decimal(str(quantity)),
                 average_cost=price,
@@ -433,12 +446,13 @@ class BacktestEngine:
         
         # Create fill
         fill = Fill(
-            price=price,
-            quantity=Decimal(str(quantity)),
-            fee=Decimal("0"),
-            slippage=Decimal("0"),
-            value=float(sale_value),
-            timestamp=timestamp
+            timestamp=timestamp,
+            symbol=symbol,
+            order_id=f"backtest_{self.total_trades}_{timestamp.timestamp()}",
+            fill_price=price,
+            fill_quantity=Decimal(str(quantity)),
+            fill_fee=Decimal("0"),
+            timestamp_filled=timestamp
         )
         
         # Update portfolio
