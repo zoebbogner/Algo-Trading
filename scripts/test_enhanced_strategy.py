@@ -31,9 +31,9 @@ async def test_enhanced_strategy():
     print("🚀 Testing Enhanced Momentum Strategy")
     print("=" * 50)
     
-    # Enhanced strategy configuration
+    # Enhanced strategy configuration with advanced features
     strategy_config = {
-        'name': 'Enhanced Momentum Strategy',
+        'name': 'Advanced Enhanced Momentum Strategy',
         'fast_ma_period': 8,           # Faster EMA for quick signals
         'slow_ma_period': 21,          # Medium EMA for trend confirmation
         'trend_ma_period': 50,         # Long-term trend
@@ -46,8 +46,18 @@ async def test_enhanced_strategy():
         'position_size': 0.08,         # Smaller positions for risk management
         'stop_loss_pct': 0.015,        # Tighter stop loss (1.5%)
         'take_profit_pct': 0.03,       # Better risk-reward (2:1)
-        'trailing_stop': True,         # Enable trailing stops
         'trailing_stop_pct': 0.01,     # 1% trailing stop
+        
+        # Advanced parameters
+        'atr_period': 14,              # Volatility measurement
+        'volatility_threshold': 0.02,  # 2% volatility threshold
+        'correlation_threshold': 0.7,  # Correlation limit
+        'max_correlation_exposure': 0.3,  # Max 30% in correlated assets
+        
+        # Multi-timeframe parameters
+        'short_ma_period': 5,          # Very short-term momentum
+        'medium_ma_period': 13,        # Short-term trend
+        'long_ma_period': 34,          # Medium-term trend
     }
     
     # Data manager configuration
