@@ -162,6 +162,77 @@ class DataManager:
         
         return None
     
+    async def get_historical_data_range(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        timeframe: str,
+        adapter_name: Optional[str] = None
+    ) -> List[Bar]:
+        """Get historical data for a specific date range.
+        
+        Args:
+            symbol: Trading symbol
+            start_date: Start date for data retrieval
+            end_date: End date for data retrieval
+            timeframe: Time interval
+            adapter_name: Specific adapter to use (optional)
+            
+        Returns:
+            List of Bar objects
+        """
+        # Calculate the number of bars needed based on timeframe and date range
+        if timeframe == "1h":
+            hours_diff = (end_date - start_date).total_seconds() / 3600
+            limit = int(hours_diff) + 1
+        elif timeframe == "1d":
+            days_diff = (end_date - start_date).days
+            limit = days_diff + 1
+        else:
+            # Default to 1000 bars for other timeframes
+            limit = 1000
+        
+        # Use specific adapter if requested
+        if adapter_name and adapter_name in self.adapters:
+            adapter = self.adapters[adapter_name]
+            if adapter.is_enabled():
+                return await adapter.get_historical_data(symbol, timeframe, limit, start_date)
+        
+        # Try all adapters in order of preference
+        for name, adapter in self.adapters.items():
+            if adapter.is_enabled() and adapter.is_connected():
+                try:
+                    data = await adapter.get_historical_data(symbol, timeframe, limit, start_date)
+                    if data:
+                        # Filter data by date range
+                        filtered_data = [
+                            bar for bar in data 
+                            if start_date <= bar.timestamp <= end_date
+                        ]
+                        
+                        if filtered_data:
+                            # Cache the data
+                            cache_key = f"{symbol}_{timeframe}"
+                            if cache_key not in self.data_cache:
+                                self.data_cache[cache_key] = []
+                            
+                            self.data_cache[cache_key].extend(filtered_data)
+                            
+                            # Maintain cache size
+                            if len(self.data_cache[cache_key]) > self.cache_size:
+                                self.data_cache[cache_key] = self.data_cache[cache_key][-self.cache_size:]
+                            
+                            logger.logger.info(f"Retrieved {len(filtered_data)} bars from {name}")
+                            return filtered_data
+                        
+                except Exception as e:
+                    logger.logger.warning(f"Failed to get data from {name}: {e}")
+                    continue
+        
+        logger.logger.error(f"Failed to get historical data from any adapter for {symbol}")
+        return []
+    
     async def get_market_data(
         self, 
         symbol: str, 

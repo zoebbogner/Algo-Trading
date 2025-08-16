@@ -8,7 +8,9 @@ from typing import Dict, List, Optional, Tuple
 from ..data_models.market import Bar, MarketData
 from ..data_models.trading import Position, Portfolio
 from ..data_models.risk import RiskEvent
-from ...utils.logging import logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Strategy(ABC):
@@ -38,7 +40,7 @@ class Strategy(ABC):
         self.trades: List[Dict] = []
         self.performance_metrics: Dict = {}
         
-        logger.logger.info(f"Initialized strategy: {self.name} v{self.version}")
+        logger.info(f"Initialized strategy: {self.name} v{self.version}")
     
     @abstractmethod
     def generate_signals(self, market_data: MarketData, portfolio: Portfolio) -> Dict:
@@ -182,7 +184,7 @@ class Strategy(ABC):
         """Reset performance tracking."""
         self.trades.clear()
         self.performance_metrics.clear()
-        logger.logger.info(f"Reset performance tracking for strategy: {self.name}")
+        logger.info(f"Reset performance tracking for strategy: {self.name}")
     
     def is_enabled(self) -> bool:
         """Check if strategy is enabled.
@@ -195,12 +197,12 @@ class Strategy(ABC):
     def enable(self) -> None:
         """Enable the strategy."""
         self.enabled = True
-        logger.logger.info(f"Enabled strategy: {self.name}")
+        logger.info(f"Enabled strategy: {self.name}")
     
     def disable(self) -> None:
         """Disable the strategy."""
         self.enabled = False
-        logger.logger.info(f"Disabled strategy: {self.name}")
+        logger.info(f"Disabled strategy: {self.name}")
     
     def get_config(self) -> Dict:
         """Get strategy configuration.
@@ -217,4 +219,4 @@ class Strategy(ABC):
             new_config: New configuration values
         """
         self.config.update(new_config)
-        logger.logger.info(f"Updated configuration for strategy: {self.name}")
+        logger.info(f"Updated configuration for strategy: {self.name}")

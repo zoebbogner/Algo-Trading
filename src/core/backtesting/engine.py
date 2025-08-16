@@ -1,648 +1,676 @@
-"""Core backtesting engine for strategy validation."""
+"""
+Backtesting Engine
+
+Core engine for running backtests with comprehensive performance tracking
+"""
 
 import asyncio
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Dict, List, Optional, Any, Callable
-from dataclasses import dataclass
+import logging
 
-from ..data_models.market import Bar, MarketData
-from ..data_models.trading import Order, Position, Portfolio, OrderSide, OrderType
+from ..data_models.market import MarketData
+from ..data_models.trading import Portfolio, Position, Order, Fill
 from ..strategy.base import Strategy
-from ..risk.manager import RiskManager
+from .analyzer import BacktestResult
 from ...adapters.data.manager import DataManager
-from ...utils.logging import logger
+from ..risk.manager import RiskManager
 
-
-@dataclass
-class BacktestResult:
-    """Results of a backtest run."""
-    
-    # Performance metrics
-    total_return: Decimal
-    total_return_pct: Decimal
-    annualized_return: Decimal
-    sharpe_ratio: Decimal
-    max_drawdown: Decimal
-    max_drawdown_pct: Decimal
-    win_rate: Decimal
-    profit_factor: Decimal
-    
-    # Trading statistics
-    total_trades: int
-    winning_trades: int
-    losing_trades: int
-    avg_win: Decimal
-    avg_loss: Decimal
-    largest_win: Decimal
-    largest_loss: Decimal
-    
-    # Portfolio metrics
-    final_portfolio_value: Decimal
-    peak_portfolio_value: Decimal
-    final_cash: Decimal
-    final_exposure: Decimal
-    
-    # Time metrics
-    start_date: datetime
-    end_date: datetime
-    duration_days: int
-    
-    # Strategy details
-    strategy_name: str
-    parameters: Dict[str, Any]
-    
-    # Detailed data
-    equity_curve: List[Dict[str, Any]]
-    trades: List[Dict[str, Any]]
-    positions: List[Dict[str, Any]]
+logger = logging.getLogger(__name__)
 
 
 class BacktestEngine:
-    """Engine for backtesting trading strategies."""
+    """
+    Backtesting engine that simulates trading strategies on historical data
+    """
     
-    def __init__(
-        self, 
-        strategy: Strategy,
-        data_manager: DataManager,
-        risk_manager: RiskManager,
-        initial_capital: Decimal = Decimal("10000"),
-        commission_rate: Decimal = Decimal("0.001"),  # 0.1%
-        slippage_rate: Decimal = Decimal("0.0005"),   # 0.05%
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ):
-        """Initialize backtesting engine.
-        
-        Args:
-            strategy: Trading strategy to test
-            data_manager: Data manager for market data
-            risk_manager: Risk management system
-            initial_capital: Starting capital
-            commission_rate: Commission rate per trade
-            slippage_rate: Slippage rate per trade
-            start_date: Backtest start date
-            end_date: Backtest end date
-        """
+    def __init__(self, strategy: Strategy, data_manager: DataManager, 
+                 risk_manager: RiskManager, initial_capital: float = 10000.0):
         self.strategy = strategy
         self.data_manager = data_manager
         self.risk_manager = risk_manager
-        self.initial_capital = initial_capital
-        self.commission_rate = commission_rate
-        self.slippage_rate = slippage_rate
-        self.start_date = start_date or (datetime.now(timezone.utc) - timedelta(days=30))
-        self.end_date = end_date or datetime.now(timezone.utc)
+        self.initial_capital = Decimal(str(initial_capital))
         
         # Portfolio state
         self.portfolio = Portfolio(
-            timestamp=datetime.now(timezone.utc),
-            cash=initial_capital,
-            equity=initial_capital,
+            cash=self.initial_capital,
+            equity=self.initial_capital,
             exposure_gross=Decimal("0"),
             exposure_net=Decimal("0"),
             drawdown=Decimal("0"),
-            peak_equity=initial_capital,
-            total_pnl=Decimal("0"),
-            positions=[]
+            peak_equity=self.initial_capital,
+            pnl_total=Decimal("0"),
+            pnl_daily=Decimal("0"),
+            positions=[],
+            timestamp=datetime.now(timezone.utc)
         )
         
         # Backtest state
-        self.current_date: Optional[datetime] = None
-        self.equity_curve: List[Dict[str, Any]] = []
-        self.trades: List[Dict[str, Any]] = []
-        self.positions: List[Dict[str, Any]] = []
-        self.market_data_cache: Dict[str, List[Bar]] = {}
+        self.equity_curve = []
+        self.trades = []
+        self.signals = []
+        self.hourly_pnl = []  # New: Track hourly P&L
+        self.portfolio_snapshots = []  # New: Track portfolio state each hour
         
-        logger.logger.info(f"Backtest engine initialized with {initial_capital} capital")
+        # Performance tracking
+        self.start_time = None
+        self.end_date = None
+        self.total_trades = 0
+        self.winning_trades = 0
+        self.losing_trades = 0
+        
+        logger.info(f"Backtest engine initialized with {initial_capital} capital")
     
-    async def run_backtest(
-        self, 
-        symbols: List[str], 
-        timeframe: str,
-        include_features: bool = True
-    ) -> BacktestResult:
-        """Run the backtest.
-        
-        Args:
-            symbols: List of symbols to trade
-            timeframe: Data timeframe
-            include_features: Whether to include technical features
-            
-        Returns:
-            BacktestResult with performance metrics
+    async def run_backtest(self, symbols: List[str], start_date: datetime, 
+                          end_date: datetime, timeframe: str = "1h") -> BacktestResult:
         """
-        logger.logger.info(f"Starting backtest for {len(symbols)} symbols from {self.start_date} to {self.end_date}")
+        Run a complete backtest
+        """
+        self.start_time = start_date
+        self.end_date = end_date
         
-        # Strategy is already initialized in constructor
+        logger.info(f"Starting backtest for {len(symbols)} symbols from {start_date} to {end_date}")
         
-        # Get historical data for all symbols
-        await self._load_historical_data(symbols, timeframe)
-        
-        # Run simulation
-        await self._run_simulation(symbols, timeframe, include_features)
-        
-        # Calculate results
-        result = self._calculate_results()
-        
-        logger.logger.info(f"Backtest completed. Final portfolio value: {result.final_portfolio_value}")
-        return result
+        try:
+            # Load historical data
+            await self._load_historical_data(symbols, start_date, end_date, timeframe)
+            
+            # Run simulation
+            await self._run_simulation()
+            
+            # Calculate results
+            results = self._calculate_results()
+            
+            logger.info(f"Backtest completed. Final portfolio value: {self.portfolio.equity}")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Backtest failed: {e}")
+            raise
     
-    async def _load_historical_data(self, symbols: List[str], timeframe: str) -> None:
-        """Load historical data for all symbols."""
-        logger.logger.info("Loading historical data...")
+    async def _load_historical_data(self, symbols: List[str], start_date: datetime, 
+                                   end_date: datetime, timeframe: str):
+        """Load historical data for all symbols"""
+        logger.info("Loading historical data...")
         
         # Ensure data manager is connected
         if not any(adapter.is_connected() for adapter in self.data_manager.adapters.values()):
-            logger.logger.info("Connecting to data sources...")
             await self.data_manager.connect_all()
         
+        self.historical_data = {}
+        
         for symbol in symbols:
             try:
-                # Get data from start_date to end_date
-                bars = await self.data_manager.get_historical_data(
-                    symbol, 
-                    timeframe, 
-                    limit=1000,  # Large enough for most timeframes
-                    since=self.start_date
+                bars = await self.data_manager.get_historical_data_range(
+                    symbol, start_date, end_date, timeframe
                 )
-                
                 if bars:
-                    # Filter by date range
-                    filtered_bars = [
-                        bar for bar in bars 
-                        if self.start_date <= bar.timestamp <= self.end_date
-                    ]
-                    
-                    if filtered_bars:
-                        self.market_data_cache[symbol] = sorted(filtered_bars, key=lambda x: x.timestamp)
-                        logger.logger.info(f"Loaded {len(filtered_bars)} bars for {symbol}")
-                    else:
-                        logger.logger.warning(f"No data in date range for {symbol}")
+                    self.historical_data[symbol] = bars
+                    logger.info(f"Loaded {len(bars)} bars for {symbol}")
                 else:
-                    logger.logger.warning(f"No data available for {symbol}")
-                    
+                    logger.warning(f"No data received for {symbol}")
             except Exception as e:
-                logger.logger.error(f"Error loading data for {symbol}: {e}")
+                logger.error(f"Failed to load data for {symbol}: {e}")
     
-    async def _run_simulation(
-        self, 
-        symbols: List[str], 
-        timeframe: str, 
-        include_features: bool
-    ) -> None:
-        """Run the trading simulation."""
-        logger.logger.info("Running trading simulation...")
+    async def _run_simulation(self):
+        """Run the trading simulation tick by tick"""
+        logger.info("Running trading simulation...")
         
-        # Get all unique timestamps across symbols
+        # Get all unique timestamps
         all_timestamps = set()
-        for bars in self.market_data_cache.values():
+        for bars in self.historical_data.values():
             all_timestamps.update(bar.timestamp for bar in bars)
         
-        # Sort timestamps chronologically
         sorted_timestamps = sorted(all_timestamps)
         
-        # Run simulation tick by tick
-        if sorted_timestamps:
-            for timestamp in sorted_timestamps:
-                self.current_date = timestamp
-                
-                # Update portfolio with current market data
-                await self._update_portfolio(timestamp, symbols, timeframe, include_features)
-                
-                # Generate strategy signals
-                signals = await self._generate_signals(timestamp, symbols, timeframe, include_features)
-                
-                # Execute trades based on signals
-                await self._execute_trades(signals, timestamp)
-                
-                # Record portfolio state
-                self._record_portfolio_state(timestamp)
-                
-                # Risk management checks
-                await self._risk_management_checks(timestamp)
-        else:
-            # No data available, record initial portfolio state
-            logger.logger.warning("No market data available, recording initial portfolio state")
+        if not sorted_timestamps:
+            # Record initial state if no data
             self._record_portfolio_state(datetime.now(timezone.utc))
-    
-    async def _update_portfolio(
-        self, 
-        timestamp: datetime, 
-        symbols: List[str], 
-        timeframe: str, 
-        include_features: bool
-    ) -> None:
-        """Update portfolio with current market data."""
-        for symbol in symbols:
-            if symbol in self.market_data_cache:
-                # Find the bar for this timestamp
-                bars = self.market_data_cache[symbol]
-                current_bar = None
-                
-                for bar in bars:
-                    if bar.timestamp == timestamp:
-                        current_bar = bar
-                        break
-                
-                if current_bar:
-                    # Update position values
-                    for position in self.portfolio.positions:
-                        if position.symbol == symbol:
-                            position.market_value = position.quantity * current_bar.close
-                            position.last_update_timestamp = timestamp
-                            
-                            # Calculate unrealized P&L
-                            position.unrealized_pnl = position.market_value - position.average_cost
-                            break
-    
-    async def _generate_signals(
-        self, 
-        timestamp: datetime, 
-        symbols: List[str], 
-        timeframe: str, 
-        include_features: bool
-    ) -> List[Dict[str, Any]]:
-        """Generate trading signals from strategy."""
-        signals = []
-        
-        for symbol in symbols:
-            if symbol in self.market_data_cache:
-                # Get market data for signal generation
-                bars = self.market_data_cache[symbol]
-                
-                # Find bars up to current timestamp
-                current_bars = [bar for bar in bars if bar.timestamp <= timestamp]
-                
-                if len(current_bars) >= 50:  # Need enough data for features
-                    try:
-                        # Create market data object
-                        latest_bar = current_bars[-1]
-                        
-                        # Calculate features if requested
-                        features = []
-                        if include_features:
-                            from ...core.features.technical import FeatureEngine
-                            feature_engine = FeatureEngine()
-                            features_dict = feature_engine.calculate_features(current_bars)
-                            
-                            for feature_name, feature_value in features_dict.items():
-                                if isinstance(feature_value, (int, float)) and feature_value == feature_value:  # Not NaN
-                                    from ...core.data_models.market import Feature
-                                    feature = Feature(
-                                        timestamp=latest_bar.timestamp,
-                                        symbol=symbol,
-                                        feature_name=feature_name,
-                                        feature_value=float(feature_value),
-                                        source="technical"
-                                    )
-                                    features.append(feature)
-                        
-                        market_data = MarketData(
-                            timestamp=latest_bar.timestamp,
-                            symbol=symbol,
-                            bar=latest_bar,
-                            features=features,
-                            timestamp_received=timestamp
-                        )
-                        
-                        # Generate signals
-                        strategy_signals = self.strategy.generate_signals(market_data, self.portfolio)
-                        
-                        # Process entry signals
-                        if symbol in strategy_signals.get("entry_signals", {}):
-                            entry_details = strategy_signals["entry_signals"][symbol]
-                            signals.append({
-                                'symbol': symbol,
-                                'signal_type': 'BUY',
-                                'timestamp': timestamp,
-                                'market_data': market_data,
-                                'details': entry_details
-                            })
-                        
-                        # Process exit signals
-                        if symbol in strategy_signals.get("exit_signals", {}):
-                            exit_details = strategy_signals["exit_signals"][symbol]
-                            signals.append({
-                                'symbol': symbol,
-                                'signal_type': 'SELL',
-                                'timestamp': timestamp,
-                                'market_data': market_data,
-                                'details': exit_details
-                            })
-                            
-                    except Exception as e:
-                        logger.logger.error(f"Error generating signal for {symbol}: {e}")
-        
-        return signals
-    
-    async def _execute_trades(self, signals: List[Dict[str, Any]], timestamp: datetime) -> None:
-        """Execute trades based on signals."""
-        for signal_data in signals:
-            signal_type = signal_data['signal_type']
-            symbol = signal_data['symbol']
-            
-            try:
-                # Check risk management (simplified for now)
-                # if not await self.risk_manager.check_trade_allowed(signal, self.portfolio):
-                #     logger.logger.debug(f"Trade blocked by risk manager for {symbol}")
-                #     continue
-                
-                # Execute the trade
-                if signal_type == 'BUY':
-                    await self._execute_buy_order(signal_data, symbol, timestamp)
-                elif signal_type == 'SELL':
-                    await self._execute_sell_order(signal_data, symbol, timestamp)
-                    
-            except Exception as e:
-                logger.logger.error(f"Error executing trade for {symbol}: {e}")
-    
-    async def _execute_buy_order(self, signal_data: Dict[str, Any], symbol: str, timestamp: datetime) -> None:
-        """Execute a buy order."""
-        # Get current price
-        current_price = self._get_current_price(symbol, timestamp)
-        if not current_price:
             return
+        
+        # Record initial portfolio state
+        self._record_portfolio_state(sorted_timestamps[0])
+        
+        # Process each timestamp
+        for timestamp in sorted_timestamps:
+            # Create market data snapshot for this timestamp
+            market_data = self._create_market_data_snapshot(timestamp)
+            
+            if not market_data.bars:
+                continue
+            
+            # Generate trading signals
+            signals = self._generate_signals(market_data)
+            
+            # Execute trades
+            if signals:
+                await self._execute_trades(signals, timestamp)
+            
+            # Update portfolio state
+            self._update_portfolio(market_data, timestamp)
+            
+            # Risk management checks
+            self._risk_management_checks(timestamp)
+            
+            # Record portfolio state for this hour
+            self._record_portfolio_state(timestamp)
+            
+            # Record hourly P&L
+            self._record_hourly_pnl(timestamp)
+    
+    def _create_market_data_snapshot(self, timestamp: datetime) -> MarketData:
+        """Create market data snapshot for a specific timestamp"""
+        bars = {}
+        features = {}
+        
+        for symbol, symbol_bars in self.historical_data.items():
+            # Find the bar closest to this timestamp
+            closest_bar = None
+            min_diff = timedelta(hours=1)  # Within 1 hour
+            
+            for bar in symbol_bars:
+                diff = abs(bar.timestamp - timestamp)
+                if diff <= min_diff:
+                    min_diff = diff
+                    closest_bar = bar
+            
+            if closest_bar:
+                bars[symbol] = [closest_bar]
+                
+                # Calculate features for this bar
+                symbol_features = self._calculate_features(symbol, symbol_bars, closest_bar)
+                if symbol_features:
+                    features[symbol] = symbol_features
+        
+        return MarketData(
+            bars=bars,
+            features=features,
+            timestamp=timestamp,
+            timestamp_received=timestamp
+        )
+    
+    def _calculate_features(self, symbol: str, all_bars: List, current_bar) -> List:
+        """Calculate technical features for a symbol"""
+        features = []
+        
+        if len(all_bars) < 20:
+            return features
+        
+        # Get recent prices
+        recent_bars = all_bars[-20:]
+        prices = [float(bar.close) for bar in recent_bars]
+        volumes = [float(bar.volume) for bar in recent_bars]
+        
+        # Simple moving averages
+        if len(prices) >= 10:
+            sma_10 = sum(prices[-10:]) / 10
+            features.append({
+                'timestamp': current_bar.timestamp,
+                'symbol': symbol,
+                'feature_name': 'SMA_10',
+                'feature_value': sma_10,
+                'lookback_period': 10,
+                'source': 'price'
+            })
+        
+        if len(prices) >= 20:
+            sma_20 = sum(prices[-20:]) / 20
+            features.append({
+                'timestamp': current_bar.timestamp,
+                'symbol': symbol,
+                'feature_name': 'SMA_20',
+                'feature_value': sma_20,
+                'lookback_period': 20,
+                'source': 'price'
+            })
+        
+        # RSI
+        if len(prices) >= 14:
+            rsi = self._calculate_rsi(prices)
+            if rsi is not None:
+                features.append({
+                    'timestamp': current_bar.timestamp,
+                    'symbol': symbol,
+                    'feature_name': 'RSI',
+                    'feature_value': rsi,
+                    'lookback_period': 14,
+                    'source': 'price'
+                })
+        
+        # Volume ratio
+        if len(volumes) >= 20:
+            current_volume = volumes[-1]
+            avg_volume = sum(volumes[-20:]) / 20
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
+            features.append({
+                'timestamp': current_bar.timestamp,
+                'symbol': symbol,
+                'feature_name': 'Volume_Ratio',
+                'feature_value': volume_ratio,
+                'lookback_period': 20,
+                'source': 'volume'
+            })
+        
+        return features
+    
+    def _calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
+        """Calculate RSI"""
+        if len(prices) < period + 1:
+            return None
+        
+        deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+        gains = [d if d > 0 else 0 for d in deltas]
+        losses = [-d if d < 0 else 0 for d in deltas]
+        
+        avg_gains = sum(gains[-period:]) / period
+        avg_losses = sum(losses[-period:]) / period
+        
+        if avg_losses == 0:
+            return 100
+        
+        rs = avg_gains / avg_losses
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+    
+    def _generate_signals(self, market_data: MarketData) -> List[Dict[str, Any]]:
+        """Generate trading signals from strategy"""
+        try:
+            strategy_signals = self.strategy.generate_signals(market_data, self.portfolio)
+            
+            signals = []
+            
+            # Process entry signals
+            for symbol, signal_data in strategy_signals.get('entry_signals', {}).items():
+                signals.append({
+                    'symbol': symbol,
+                    'signal_type': 'entry',
+                    'side': signal_data.get('side'),
+                    'price': signal_data.get('price'),
+                    'quantity': signal_data.get('quantity'),
+                    'reason': signal_data.get('reason'),
+                    'timestamp': signal_data.get('timestamp'),
+                    'details': signal_data
+                })
+            
+            # Process exit signals
+            for symbol, signal_data in strategy_signals.get('exit_signals', {}).items():
+                signals.append({
+                    'symbol': symbol,
+                    'signal_type': 'exit',
+                    'side': signal_data.get('side'),
+                    'price': signal_data.get('price'),
+                    'quantity': signal_data.get('quantity'),
+                    'reason': signal_data.get('reason'),
+                    'timestamp': signal_data.get('timestamp'),
+                    'details': signal_data
+                })
+            
+            return signals
+            
+        except Exception as e:
+            logger.error(f"Error generating signals: {e}")
+            return []
+    
+    async def _execute_trades(self, signals: List[Dict[str, Any]], timestamp: datetime):
+        """Execute trading signals"""
+        for signal in signals:
+            try:
+                if signal['signal_type'] == 'entry':
+                    if signal['side'] == 'buy':
+                        await self._execute_buy_order(signal, timestamp)
+                    elif signal['side'] == 'sell':
+                        await self._execute_sell_order(signal, timestamp)
+                elif signal['signal_type'] == 'exit':
+                    if signal['side'] == 'sell':
+                        await self._execute_sell_order(signal, timestamp)
+                    elif signal['side'] == 'buy':
+                        await self._execute_buy_order(signal, timestamp)
+                        
+            except Exception as e:
+                logger.error(f"Error executing trade: {e}")
+    
+    async def _execute_buy_order(self, signal: Dict[str, Any], timestamp: datetime):
+        """Execute a buy order"""
+        symbol = signal['symbol']
+        price = Decimal(str(signal['price']))
+        quantity = signal['quantity']
+        
+        # Risk management check (temporarily disabled)
+        # if not self.risk_manager.check_trade_allowed(signal):
+        #     return
         
         # Calculate position size
-        position_size = self._calculate_position_size(signal_data, current_price)
-        if position_size <= 0:
-            return
+        position_size = self._calculate_position_size(price, quantity)
         
         # Check if we have enough cash
-        total_cost = position_size * current_price
-        if total_cost > self.portfolio.cash:
-            # Adjust position size to available cash
-            position_size = self.portfolio.cash / current_price
-            total_cost = self.portfolio.cash
+        if position_size > self.portfolio.cash:
+            logger.warning(f"Insufficient cash for {symbol} buy order")
+            return
         
-        # Calculate fees and slippage
-        commission = total_cost * self.commission_rate
-        slippage = total_cost * self.slippage_rate
-        total_cost_with_fees = total_cost + commission + slippage
+        # Create fill
+        fill = Fill(
+            price=price,
+            quantity=Decimal(str(quantity)),
+            fee=Decimal("0"),  # Simplified for backtesting
+            slippage=Decimal("0"),
+            value=position_size,
+            timestamp=timestamp
+        )
         
         # Update portfolio
-        self.portfolio.cash -= total_cost_with_fees
+        self.portfolio.cash -= position_size
         
-        # Create or update position
+        # Find or create position
         existing_position = None
-        for position in self.portfolio.positions:
-            if position.symbol == symbol:
-                existing_position = position
+        for pos in self.portfolio.positions:
+            if pos.symbol == symbol:
+                existing_position = pos
                 break
         
         if existing_position:
-            # Add to existing position
-            old_quantity = existing_position.quantity
-            old_cost = existing_position.average_cost
-            
-            new_quantity = old_quantity + position_size
-            new_cost = old_cost + total_cost
-            
-            existing_position.quantity = new_quantity
-            existing_position.average_cost = new_cost
+            # Update existing position
+            total_quantity = existing_position.quantity + Decimal(str(quantity))
+            total_cost = existing_position.average_cost * existing_position.quantity + position_size
+            existing_position.average_cost = total_cost / total_quantity
+            existing_position.quantity = total_quantity
             existing_position.last_update_timestamp = timestamp
         else:
             # Create new position
             position = Position(
-                timestamp=timestamp,
                 symbol=symbol,
-                quantity=position_size,
-                average_cost=current_price,
-                unrealized_pnl=Decimal("0"),
-                realized_pnl=Decimal("0"),
-                market_value=position_size * current_price,
+                quantity=Decimal(str(quantity)),
+                average_cost=price,
+                market_value=position_size,
                 entry_timestamp=timestamp,
                 last_update_timestamp=timestamp
             )
             self.portfolio.positions.append(position)
         
         # Record trade
-        self._record_trade(symbol, OrderSide.BUY, position_size, current_price, timestamp)
+        self.trades.append({
+            'timestamp': timestamp,
+            'symbol': symbol,
+            'side': 'buy',
+            'quantity': quantity,
+            'price': float(price),
+            'value': float(position_size),
+            'reason': signal.get('reason', ''),
+            'fill': fill
+        })
         
-        logger.logger.debug(f"Executed BUY order: {position_size} {symbol} @ {current_price}")
+        self.total_trades += 1
+        logger.info(f"Executed BUY order: {quantity} {symbol} @ {price}")
     
-    async def _execute_sell_order(self, signal_data: Dict[str, Any], symbol: str, timestamp: datetime) -> None:
-        """Execute a sell order."""
+    async def _execute_sell_order(self, signal: Dict[str, Any], timestamp: datetime):
+        """Execute a sell order"""
+        symbol = signal['symbol']
+        price = Decimal(str(signal['price']))
+        quantity = signal['quantity']
+        
         # Find position
-        position = None
-        position_index = -1
+        position_index = None
         for i, pos in enumerate(self.portfolio.positions):
             if pos.symbol == symbol:
-                position = pos
                 position_index = i
                 break
         
-        if not position or position.quantity <= 0:
+        if position_index is None:
+            logger.warning(f"No position found for {symbol} sell order")
             return
         
-        # Get current price
-        current_price = self._get_current_price(symbol, timestamp)
-        if not current_price:
+        position = self.portfolio.positions[position_index]
+        
+        # Check if we have enough quantity
+        if abs(position.quantity) < quantity:
+            logger.warning(f"Insufficient quantity for {symbol} sell order")
             return
-        
-        # Calculate sell quantity
-        sell_quantity = min(position.quantity, signal_data.get('details', {}).get('quantity', position.quantity))
-        
-        # Calculate proceeds
-        gross_proceeds = sell_quantity * current_price
-        commission = gross_proceeds * self.commission_rate
-        slippage = gross_proceeds * self.slippage_rate
-        net_proceeds = gross_proceeds - commission - slippage
         
         # Calculate P&L
-        cost_basis = (sell_quantity / position.quantity) * position.average_cost
-        realized_pnl = gross_proceeds - cost_basis - commission - slippage
+        cost_basis = position.average_cost * Decimal(str(quantity))
+        sale_value = price * Decimal(str(quantity))
+        pnl = sale_value - cost_basis
+        
+        # Create fill
+        fill = Fill(
+            price=price,
+            quantity=Decimal(str(quantity)),
+            fee=Decimal("0"),
+            slippage=Decimal("0"),
+            value=float(sale_value),
+            timestamp=timestamp
+        )
         
         # Update portfolio
-        self.portfolio.cash += net_proceeds
+        self.portfolio.cash += sale_value
+        self.portfolio.pnl_total += pnl
         
         # Update position
-        position.quantity -= sell_quantity
-        position.average_cost = (position.average_cost * (position.quantity + sell_quantity) - cost_basis) / position.quantity if position.quantity > 0 else Decimal("0")
-        position.realized_pnl += realized_pnl
+        if position.quantity > 0:  # Long position
+            position.quantity -= Decimal(str(quantity))
+        else:  # Short position
+            position.quantity += Decimal(str(quantity))
         
-        if position.quantity <= 0:
-            # Close position
+        # Remove position if fully closed
+        if position.quantity == 0:
             self.portfolio.positions.pop(position_index)
         else:
-            # Update timestamp
             position.last_update_timestamp = timestamp
         
         # Record trade
-        self._record_trade(symbol, OrderSide.SELL, sell_quantity, current_price, timestamp)
-        
-        logger.logger.debug(f"Executed SELL order: {sell_quantity} {symbol} @ {current_price}")
-    
-    def _get_current_price(self, symbol: str, timestamp: datetime) -> Optional[Decimal]:
-        """Get current price for a symbol at a specific timestamp."""
-        if symbol in self.market_data_cache:
-            bars = self.market_data_cache[symbol]
-            for bar in bars:
-                if bar.timestamp == timestamp:
-                    return bar.close
-        return None
-    
-    def _calculate_position_size(self, signal_data: Dict[str, Any], current_price: Decimal) -> Decimal:
-        """Calculate position size based on signal and risk management."""
-        # Simple position sizing - can be enhanced
-        details = signal_data.get('details', {})
-        if 'quantity' in details:
-            return Decimal(str(details['quantity']))
-        
-        # Default to 10% of available cash
-        return (self.portfolio.cash * Decimal("0.1")) / current_price
-    
-    def _record_trade(self, symbol: str, side: OrderSide, quantity: Decimal, price: Decimal, timestamp: datetime) -> None:
-        """Record a trade for analysis."""
-        trade = {
+        self.trades.append({
             'timestamp': timestamp,
             'symbol': symbol,
-            'side': side.value,
-            'quantity': float(quantity),
+            'side': 'sell',
+            'quantity': quantity,
             'price': float(price),
-            'value': float(quantity * price),
-            'portfolio_value': float(self.portfolio.equity)
-        }
-        self.trades.append(trade)
+            'value': float(sale_value),
+            'pnl': float(pnl),
+            'reason': signal.get('reason', ''),
+            'fill': fill
+        })
+        
+        self.total_trades += 1
+        
+        # Update win/loss counts
+        if pnl > 0:
+            self.winning_trades += 1
+        else:
+            self.losing_trades += 1
+        
+        logger.info(f"Executed SELL order: {quantity} {symbol} @ {price}, P&L: {pnl}")
     
-    def _record_portfolio_state(self, timestamp: datetime) -> None:
-        """Record portfolio state for equity curve."""
-        # Calculate current portfolio value
-        total_position_value = sum(
-            pos.market_value for pos in self.portfolio.positions
-        )
+    def _calculate_position_size(self, price: Decimal, quantity: float) -> Decimal:
+        """Calculate the dollar value of a position"""
+        return price * Decimal(str(quantity))
+    
+    def _update_portfolio(self, market_data: MarketData, timestamp: datetime):
+        """Update portfolio with current market data"""
+        total_market_value = Decimal("0")
         
-        self.portfolio.equity = self.portfolio.cash + total_position_value
-        self.portfolio.exposure_gross = total_position_value
-        self.portfolio.exposure_net = total_position_value  # Simplified for now
+        for symbol, bars in market_data.bars.items():
+            if not bars:
+                continue
+            
+            current_price = bars[0].close
+            
+            # Find position for this symbol
+            for position in self.portfolio.positions:
+                if position.symbol == symbol:
+                    # Update market value
+                    position.market_value = current_price * abs(position.quantity)
+                    position.last_update_timestamp = timestamp
+                    total_market_value += position.market_value
         
-        # Update peak equity and drawdown
+        # Update portfolio equity
+        self.portfolio.equity = self.portfolio.cash + total_market_value
+        
+        # Update drawdown
         if self.portfolio.equity > self.portfolio.peak_equity:
             self.portfolio.peak_equity = self.portfolio.equity
         
-        if self.portfolio.peak_equity > 0:
-            self.portfolio.drawdown = (self.portfolio.peak_equity - self.portfolio.equity) / self.portfolio.peak_equity
+        current_drawdown = (self.portfolio.peak_equity - self.portfolio.equity) / self.portfolio.peak_equity
+        if current_drawdown > self.portfolio.drawdown:
+            self.portfolio.drawdown = current_drawdown
+    
+    def _risk_management_checks(self, timestamp: datetime):
+        """Perform risk management checks"""
+        try:
+            # Temporarily disabled - methods not yet implemented
+            # self.risk_manager.check_circuit_breaker(self.portfolio)
+            # self.risk_manager.check_position_limits(self.portfolio)
+            pass
+        except Exception as e:
+            logger.warning(f"Risk management check failed: {e}")
+    
+    def _record_portfolio_state(self, timestamp: datetime):
+        """Record portfolio state for analysis"""
+        # Calculate exposure
+        exposure_gross = sum(abs(pos.market_value) for pos in self.portfolio.positions)
+        exposure_net = sum(pos.market_value for pos in self.portfolio.positions)
         
-        # Record state
-        state = {
+        # Record equity curve
+        self.equity_curve.append({
             'timestamp': timestamp,
             'equity': float(self.portfolio.equity),
             'cash': float(self.portfolio.cash),
-            'exposure': float(self.portfolio.exposure_gross),
+            'exposure_gross': float(exposure_gross),
+            'exposure_net': float(exposure_net),
             'drawdown': float(self.portfolio.drawdown),
-            'peak_equity': float(self.portfolio.peak_equity)
-        }
-        self.equity_curve.append(state)
+            'positions_count': len(self.portfolio.positions)
+        })
+        
+        # Record portfolio snapshot
+        self.portfolio_snapshots.append({
+            'timestamp': timestamp,
+            'portfolio': self.portfolio.copy() if hasattr(self.portfolio, 'copy') else self.portfolio
+        })
     
-    async def _risk_management_checks(self, timestamp: datetime) -> None:
-        """Perform risk management checks."""
-        try:
-            # Simplified risk management for now
-            # Could implement more sophisticated checks later
-            pass
-        except Exception as e:
-            logger.logger.error(f"Error in risk management checks: {e}")
-    
-    def _calculate_results(self) -> BacktestResult:
-        """Calculate final backtest results."""
-        if not self.equity_curve:
-            raise ValueError("No equity curve data available")
+    def _record_hourly_pnl(self, timestamp: datetime):
+        """Record hourly P&L for detailed tracking"""
+        if len(self.equity_curve) < 2:
+            return
         
-        # Basic metrics
-        start_equity = self.equity_curve[0]['equity']
-        end_equity = self.equity_curve[-1]['equity']
-        total_return = end_equity - start_equity
-        total_return_pct = (total_return / start_equity) * 100
+        current_equity = self.equity_curve[-1]['equity']
+        previous_equity = self.equity_curve[-2]['equity']
+        hourly_pnl = current_equity - previous_equity
+        hourly_pnl_pct = (hourly_pnl / previous_equity * 100) if previous_equity > 0 else 0
         
-        # Duration
-        start_date = self.equity_curve[0]['timestamp']
-        end_date = self.equity_curve[-1]['timestamp']
-        duration_days = (end_date - start_date).days
-        
-        # Annualized return
-        if duration_days > 0:
-            annualized_return = ((end_equity / start_equity) ** (365 / duration_days) - 1) * 100
-        else:
-            annualized_return = Decimal("0")
-        
-        # Drawdown
-        max_drawdown = max(state['drawdown'] for state in self.equity_curve)
-        max_drawdown_pct = max_drawdown * 100
-        
-        # Trade analysis
-        winning_trades = [t for t in self.trades if t['side'] == 'SELL' and t['value'] > 0]
-        losing_trades = [t for t in self.trades if t['side'] == 'SELL' and t['value'] <= 0]
-        
-        total_trades = len([t for t in self.trades if t['side'] == 'SELL'])
-        win_rate = len(winning_trades) / total_trades if total_trades > 0 else 0
-        
-        # Calculate returns for each trade
-        trade_returns = []
-        for i, trade in enumerate(self.trades):
-            if trade['side'] == 'SELL':
-                # Find corresponding buy trade
-                buy_trades = [t for t in self.trades[:i] if t['symbol'] == trade['symbol'] and t['side'] == 'BUY']
-                if buy_trades:
-                    buy_trade = buy_trades[-1]
-                    buy_value = buy_trade['value']
-                    sell_value = trade['value']
-                    trade_return = (sell_value - buy_value) / buy_value
-                    trade_returns.append(trade_return)
-        
-        # Performance metrics
-        if trade_returns:
-            avg_win = sum(r for r in trade_returns if r > 0) / len([r for r in trade_returns if r > 0]) if any(r > 0 for r in trade_returns) else 0
-            avg_loss = sum(r for r in trade_returns if r < 0) / len([r for r in trade_returns if r < 0]) if any(r < 0 for r in trade_returns) else 0
-            largest_win = max(trade_returns) if trade_returns else 0
-            largest_loss = min(trade_returns) if trade_returns else 0
-            
-            # Sharpe ratio (simplified)
-            if len(trade_returns) > 1:
-                mean_return = sum(trade_returns) / len(trade_returns)
-                std_return = (sum((r - mean_return) ** 2 for r in trade_returns) / (len(trade_returns) - 1)) ** 0.5
-                sharpe_ratio = mean_return / std_return if std_return > 0 else 0
-            else:
-                sharpe_ratio = 0
-            
-            # Profit factor
-            gross_profit = sum(r for r in trade_returns if r > 0)
-            gross_loss = abs(sum(r for r in trade_returns if r < 0))
-            profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
-        else:
-            avg_win = avg_loss = largest_win = largest_loss = sharpe_ratio = profit_factor = 0
-        
-        return BacktestResult(
-            total_return=Decimal(str(total_return)),
-            total_return_pct=Decimal(str(total_return_pct)),
-            annualized_return=Decimal(str(annualized_return)),
-            sharpe_ratio=Decimal(str(sharpe_ratio)),
-            max_drawdown=Decimal(str(max_drawdown)),
-            max_drawdown_pct=Decimal(str(max_drawdown_pct)),
-            win_rate=Decimal(str(win_rate)),
-            profit_factor=Decimal(str(profit_factor)),
-            total_trades=total_trades,
-            winning_trades=len(winning_trades),
-            losing_trades=len(losing_trades),
-            avg_win=Decimal(str(avg_win)),
-            avg_loss=Decimal(str(avg_loss)),
-            largest_win=Decimal(str(largest_win)),
-            largest_loss=Decimal(str(largest_loss)),
-            final_portfolio_value=Decimal(str(end_equity)),
-            peak_portfolio_value=Decimal(str(max(state['equity'] for state in self.equity_curve))),
-            final_cash=Decimal(str(self.portfolio.cash)),
-            final_exposure=Decimal(str(self.portfolio.exposure_gross)),
-            start_date=start_date,
-            end_date=end_date,
-            duration_days=duration_days,
-            strategy_name=self.strategy.__class__.__name__,
-            parameters=self.strategy.config,
-            equity_curve=self.equity_curve,
-            trades=self.trades,
-            positions=[{
+        # Get current positions for this hour
+        current_positions = []
+        for pos in self.portfolio.positions:
+            current_positions.append({
                 'symbol': pos.symbol,
                 'quantity': float(pos.quantity),
-                'average_cost': float(pos.average_cost),
                 'market_value': float(pos.market_value),
-                'unrealized_pnl': float(pos.unrealized_pnl)
-            } for pos in self.portfolio.positions]
+                'unrealized_pnl': float(pos.market_value - (pos.average_cost * abs(pos.quantity)))
+            })
+        
+        # Get trades for this hour
+        hourly_trades = []
+        for trade in self.trades:
+            if trade['timestamp'].hour == timestamp.hour and trade['timestamp'].date() == timestamp.date():
+                hourly_trades.append({
+                    'symbol': trade['symbol'],
+                    'side': trade['side'],
+                    'quantity': trade['quantity'],
+                    'price': trade['price'],
+                    'value': trade['value'],
+                    'pnl': trade.get('pnl', 0),
+                    'reason': trade.get('reason', '')
+                })
+        
+        self.hourly_pnl.append({
+            'timestamp': timestamp,
+            'equity': current_equity,
+            'hourly_pnl': hourly_pnl,
+            'hourly_pnl_pct': hourly_pnl_pct,
+            'positions': current_positions,
+            'trades': hourly_trades,
+            'cash': float(self.portfolio.cash),
+            'exposure': float(sum(abs(pos.market_value) for pos in self.portfolio.positions))
+        })
+    
+    def _calculate_results(self) -> BacktestResult:
+        """Calculate comprehensive backtest results"""
+        if not self.equity_curve:
+            return BacktestResult(
+                strategy_name=self.strategy.name,
+                start_date=self.start_time,
+                end_date=self.end_date,
+                initial_capital=float(self.initial_capital),
+                final_capital=float(self.portfolio.equity),
+                total_return=0.0,
+                annualized_return=0.0,
+                sharpe_ratio=0.0,
+                max_drawdown=0.0,
+                total_trades=self.total_trades,
+                win_rate=0.0,
+                profit_factor=0.0,
+                equity_curve=[],
+                trades=self.trades,
+                hourly_pnl=self.hourly_pnl,  # New: Include hourly P&L
+                portfolio_snapshots=self.portfolio_snapshots,  # New: Include portfolio snapshots
+                parameters=self.strategy.config
+            )
+        
+        # Calculate returns
+        initial_equity = self.equity_curve[0]['equity']
+        final_equity = self.equity_curve[-1]['equity']
+        total_return = (final_equity - initial_equity) / initial_equity
+        
+        # Calculate annualized return
+        if self.start_time and self.end_date:
+            duration_days = (self.end_date - self.start_time).days
+            if duration_days > 0:
+                annualized_return = ((1 + total_return) ** (365 / duration_days)) - 1
+            else:
+                annualized_return = 0.0
+        else:
+            annualized_return = 0.0
+        
+        # Calculate Sharpe ratio (simplified)
+        returns = []
+        for i in range(1, len(self.equity_curve)):
+            prev_equity = self.equity_curve[i-1]['equity']
+            curr_equity = self.equity_curve[i]['equity']
+            if prev_equity > 0:
+                returns.append((curr_equity - prev_equity) / prev_equity)
+        
+        if returns:
+            avg_return = sum(returns) / len(returns)
+            std_return = (sum((r - avg_return) ** 2 for r in returns) / len(returns)) ** 0.5
+            sharpe_ratio = avg_return / std_return if std_return > 0 else 0.0
+        else:
+            sharpe_ratio = 0.0
+        
+        # Calculate win rate
+        win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0.0
+        
+        # Calculate profit factor
+        winning_pnl = sum(trade.get('pnl', 0) for trade in self.trades if trade.get('pnl', 0) > 0)
+        losing_pnl = abs(sum(trade.get('pnl', 0) for trade in self.trades if trade.get('pnl', 0) < 0))
+        profit_factor = winning_pnl / losing_pnl if losing_pnl > 0 else 0.0
+        
+        # Get max drawdown
+        max_drawdown = max(equity['drawdown'] for equity in self.equity_curve)
+        
+        return BacktestResult(
+            strategy_name=self.strategy.name,
+            start_date=self.start_time,
+            end_date=self.end_date,
+            initial_capital=float(self.initial_capital),
+            final_capital=float(self.portfolio.equity),
+            total_return=total_return,
+            annualized_return=annualized_return,
+            sharpe_ratio=sharpe_ratio,
+            max_drawdown=max_drawdown,
+            total_trades=self.total_trades,
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            equity_curve=self.equity_curve,
+            trades=self.trades,
+            hourly_pnl=self.hourly_pnl,  # New: Include hourly P&L
+            portfolio_snapshots=self.portfolio_snapshots,  # New: Include portfolio snapshots
+            parameters=self.strategy.config
         )

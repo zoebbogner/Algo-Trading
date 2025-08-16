@@ -50,14 +50,15 @@ class Feature(TimeSeriesEntity):
     source: str = Field(..., description="Source of the feature (e.g., 'technical', 'price', 'volume')")
 
 class MarketData(TimeSeriesEntity):
-    """Aggregated market data including bar and features."""
+    """Aggregated market data including bars and features for multiple symbols."""
     
-    bar: Bar = Field(..., description="OHLCV bar data")
-    features: list[Feature] = Field(default_factory=list, description="Engineered features")
+    symbol: Optional[str] = Field(None, description="Primary symbol (optional for multi-symbol data)")
+    bars: dict[str, list[Bar]] = Field(default_factory=dict, description="OHLCV bar data by symbol")
+    features: dict[str, list[Feature]] = Field(default_factory=dict, description="Engineered features by symbol")
     bid: Optional[Decimal] = Field(None, description="Best bid price")
     ask: Optional[Decimal] = Field(None, description="Best ask price")
     last_price: Optional[Decimal] = Field(None, description="Last traded price")
-    timestamp_received: datetime = Field(..., description="When data was received")
+    timestamp_received: Optional[datetime] = Field(None, description="When data was received")
     
     @property
     def mid_price(self) -> Optional[Decimal]:
