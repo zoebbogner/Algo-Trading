@@ -217,10 +217,21 @@ class MomentumStrategy(Strategy):
             if not current_position:
                 print(f"🚀 ENHANCED STRATEGY: {symbol} has no position, checking entry conditions...")
                 
-                # Check correlation risk first
+                # Check portfolio heat map first
+                heat_map = self._check_portfolio_heat_map(symbol, portfolio)
+                if not self._should_enter_with_heat_map(symbol, portfolio, heat_map):
+                    continue
+                
+                print(f"📊 ENHANCED STRATEGY: {symbol} Portfolio heat map - Total exposure: {heat_map['total_exposure']:.1%}, Crypto: {heat_map['crypto_exposure']:.1%}")
+                
+                # Check correlation risk
                 if self._check_correlation_risk(symbol, portfolio):
                     print(f"⚠️ ENHANCED STRATEGY: {symbol} correlation risk too high, skipping")
                     continue
+                
+                # Calculate adaptive entry threshold
+                adaptive_threshold = self._calculate_adaptive_entry_threshold(indicators)
+                print(f"🎯 ENHANCED STRATEGY: {symbol} Adaptive entry threshold: {adaptive_threshold}/100")
                 
                 # Advanced entry conditions
                 entry_score = 0
@@ -256,24 +267,25 @@ class MomentumStrategy(Strategy):
                     entry_reasons.append("Good volatility")
                     print(f"✅ ENHANCED STRATEGY: {symbol} Volatility: {indicators['volatility']:.3f}")
                 
-                # Entry decision (need 60+ points out of 100) - Lowered from 70 to 60
-                if entry_score >= 60:
-                    # Calculate dynamic position size
-                    position_size = self._calculate_dynamic_position_size(indicators, portfolio)
+                # Entry decision using adaptive threshold
+                if entry_score >= adaptive_threshold:
+                    # Calculate enhanced position size
+                    position_size = self._calculate_enhanced_position_size(indicators, portfolio)
                     
                     entry_signals[symbol] = {
                         'side': 'buy',
                         'price': current_price,
                         'quantity': self._calculate_position_size(current_price, portfolio, position_size),
-                        'reason': f"Enhanced Entry Score: {entry_score}/100 - {' | '.join(entry_reasons)}",
+                        'reason': f"Enhanced Entry Score: {entry_score}/{adaptive_threshold} - {' | '.join(entry_reasons)}",
                         'timestamp': datetime.now(timezone.utc),
                         'entry_score': entry_score,
-                        'position_size': position_size
+                        'position_size': position_size,
+                        'adaptive_threshold': adaptive_threshold
                     }
-                    print(f"🚀 ENHANCED STRATEGY: {symbol} BUY SIGNAL! Score: {entry_score}/100")
+                    print(f"🚀 ENHANCED STRATEGY: {symbol} BUY SIGNAL! Score: {entry_score}/{adaptive_threshold}")
                     print(f"   Position Size: {position_size:.1%}, Quantity: {entry_signals[symbol]['quantity']:.4f}")
                 else:
-                    print(f"❌ ENHANCED STRATEGY: {symbol} Entry score too low: {entry_score}/100")
+                    print(f"❌ ENHANCED STRATEGY: {symbol} Entry score too low: {entry_score}/{adaptive_threshold}")
             
             # Exit signals for existing positions
             elif current_position:
@@ -436,4 +448,136 @@ class MomentumStrategy(Strategy):
     def should_exit(self, market_data: MarketData, portfolio: Portfolio) -> bool:
         """Check if we should exit existing positions"""
         # Always allow exit in this enhanced strategy
+        return True
+
+    def _calculate_adaptive_entry_threshold(self, indicators: Dict[str, float]) -> float:
+        """Calculate adaptive entry threshold based on market conditions"""
+        base_threshold = 60  # Base threshold
+        
+        # Adjust for market regime
+        if indicators.get('market_regime') == 'strong_uptrend':
+            base_threshold -= 10  # Easier entry in strong uptrends
+        elif indicators.get('market_regime') == 'strong_downtrend':
+            base_threshold += 15  # Harder entry in strong downtrends
+        elif indicators.get('market_regime') == 'weak_trend':
+            base_threshold -= 5   # Slightly easier in weak trends
+        # 'ranging' keeps base threshold
+        
+        # Adjust for volatility
+        volatility = indicators.get('volatility', 0)
+        if volatility > self.volatility_threshold * 1.5:
+            base_threshold -= 5   # Easier entry in high volatility (more opportunities)
+        elif volatility < self.volatility_threshold * 0.5:
+            base_threshold += 5   # Harder entry in low volatility (fewer opportunities)
+        
+        # Adjust for RSI extremes
+        rsi = indicators.get('rsi', 50)
+        if rsi < 25 or rsi > 75:
+            base_threshold -= 5   # Easier entry at RSI extremes (reversal opportunities)
+        
+        return max(40, min(80, base_threshold))  # Keep between 40-80
+
+    def _calculate_enhanced_position_size(self, indicators: Dict[str, float], portfolio: Portfolio) -> float:
+        """Calculate enhanced position size with volatility and market regime adjustment"""
+        base_size = self.position_size
+        
+        # Market regime adjustments
+        if indicators.get('market_regime') == 'strong_uptrend':
+            base_size *= 1.3  # Increase size in strong uptrends
+        elif indicators.get('market_regime') == 'strong_downtrend':
+            base_size *= 0.7  # Decrease size in strong downtrends
+        elif indicators.get('market_regime') == 'weak_trend':
+            base_size *= 1.1  # Slightly increase in weak trends
+        elif indicators.get('market_regime') == 'ranging':
+            base_size *= 0.9  # Decrease in ranging markets
+        
+        # Volatility adjustments
+        volatility = indicators.get('volatility', 0)
+        if volatility > self.volatility_threshold * 1.5:
+            base_size *= 0.7  # Reduce size in very high volatility
+        elif volatility > self.volatility_threshold:
+            base_size *= 0.8  # Reduce size in high volatility
+        elif volatility < self.volatility_threshold * 0.5:
+            base_size *= 1.2  # Increase size in low volatility (more predictable)
+        
+        # RSI adjustments
+        rsi = indicators.get('rsi', 50)
+        if rsi < 30 or rsi > 70:
+            base_size *= 0.8  # Reduce size at RSI extremes
+        
+        # Trend strength adjustments
+        adx = indicators.get('adx', 25)
+        if adx > 40:
+            base_size *= 1.2  # Increase size in very strong trends
+        elif adx < 15:
+            base_size *= 0.8  # Decrease size in weak trends
+        
+        # Portfolio concentration adjustments
+        current_exposure = self._calculate_portfolio_exposure(portfolio)
+        if current_exposure > 0.5:  # If more than 50% exposed
+            base_size *= 0.7  # Reduce size to manage risk
+        
+        # Ensure position size is within bounds
+        max_size = min(0.20, float(portfolio.cash) / float(portfolio.equity) * 0.6)
+        min_size = 0.02  # Minimum 2% position
+        return max(min_size, min(base_size, max_size))
+
+    def _calculate_portfolio_exposure(self, portfolio: Portfolio) -> float:
+        """Calculate current portfolio exposure to crypto assets"""
+        if not portfolio.positions:
+            return 0.0
+        
+        total_exposure = sum(abs(float(p.market_value)) for p in portfolio.positions)
+        return total_exposure / float(portfolio.equity)
+
+    def _check_portfolio_heat_map(self, symbol: str, portfolio: Portfolio) -> Dict[str, Any]:
+        """Analyze portfolio heat map for better risk management"""
+        heat_map = {
+            'total_positions': len(portfolio.positions),
+            'total_exposure': self._calculate_portfolio_exposure(portfolio),
+            'crypto_exposure': 0.0,
+            'correlation_risk': False,
+            'max_position_size': 0.0,
+            'position_concentration': 0.0
+        }
+        
+        if not portfolio.positions:
+            return heat_map
+        
+        # Calculate crypto exposure
+        crypto_positions = [p for p in portfolio.positions if '/' in p.symbol]
+        heat_map['crypto_exposure'] = sum(abs(float(p.market_value)) for p in crypto_positions) / float(portfolio.equity)
+        
+        # Check for position concentration
+        if portfolio.positions:
+            max_position = max(portfolio.positions, key=lambda p: abs(float(p.market_value)))
+            heat_map['max_position_size'] = abs(float(max_position.market_value)) / float(portfolio.equity)
+        
+        # Check correlation risk
+        if heat_map['crypto_exposure'] > self.max_correlation_exposure:
+            heat_map['correlation_risk'] = True
+        
+        # Check position concentration
+        if heat_map['max_position_size'] > 0.3:  # If any position > 30%
+            heat_map['position_concentration'] = heat_map['max_position_size']
+        
+        return heat_map
+
+    def _should_enter_with_heat_map(self, symbol: str, portfolio: Portfolio, heat_map: Dict[str, Any]) -> bool:
+        """Determine if we should enter based on portfolio heat map analysis"""
+        # Don't enter if portfolio is too concentrated
+        if heat_map['position_concentration'] > 0.4:  # 40% max concentration
+            print(f"⚠️ ENHANCED STRATEGY: {symbol} Portfolio too concentrated ({heat_map['position_concentration']:.1%})")
+            return False
+        
+        # Don't enter if total exposure is too high
+        if heat_map['total_exposure'] > 0.8:  # 80% max total exposure
+            print(f"⚠️ ENHANCED STRATEGY: {symbol} Total exposure too high ({heat_map['total_exposure']:.1%})")
+            return False
+        
+        # Don't enter if correlation risk is too high
+        if heat_map['correlation_risk']:
+            print(f"⚠️ ENHANCED STRATEGY: {symbol} Correlation risk too high (crypto exposure: {heat_map['crypto_exposure']:.1%})")
+            return False
+        
         return True
