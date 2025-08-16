@@ -1,6 +1,6 @@
 """Trading data models."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
@@ -85,8 +85,8 @@ class Position(TimeSeriesEntity):
     unrealized_pnl: Decimal = Field(default=Decimal("0"), description="Unrealized P&L")
     realized_pnl: Decimal = Field(default=Decimal("0"), description="Realized P&L")
     market_value: Decimal = Field(..., description="Current market value")
-    entry_timestamp: datetime = Field(..., description="Position entry timestamp")
-    last_update_timestamp: datetime = Field(..., description="Last position update timestamp")
+    entry_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Position entry timestamp")
+    last_update_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Last position update timestamp")
     
     @property
     def is_long(self) -> bool:

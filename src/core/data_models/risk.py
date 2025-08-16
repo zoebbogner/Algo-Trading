@@ -41,9 +41,6 @@ class RiskEvent(BaseEntity):
     action_taken: Optional[str] = Field(None, description="Action taken in response")
     resolved: bool = Field(default=False, description="Whether event is resolved")
     resolved_timestamp: Optional[datetime] = Field(None, description="When event was resolved")
-    
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class RiskMetrics(TimeSeriesEntity):
@@ -59,9 +56,6 @@ class RiskMetrics(TimeSeriesEntity):
     sortino_ratio: Optional[float] = Field(None, description="Sortino ratio")
     max_drawdown: Decimal = Field(..., description="Maximum drawdown")
     correlation_matrix: Optional[Dict[str, Dict[str, float]]] = Field(None, description="Position correlation matrix")
-    
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
 
 
 class CircuitBreaker(BaseEntity):

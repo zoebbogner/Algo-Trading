@@ -48,10 +48,6 @@ class Feature(TimeSeriesEntity):
     feature_value: float = Field(..., description="Feature value")
     lookback_period: Optional[int] = Field(None, description="Lookback period for calculation")
     source: str = Field(..., description="Source of the feature (e.g., 'technical', 'price', 'volume')")
-    
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
-
 
 class MarketData(TimeSeriesEntity):
     """Aggregated market data including bar and features."""

@@ -1,6 +1,6 @@
 """Base data models for the trading system."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
 
@@ -12,18 +12,17 @@ class BaseEntity(BaseModel):
     
     model_config = ConfigDict(
         validate_assignment=True,
-        arbitrary_types_allowed=True,
-        json_encoders={datetime: lambda v: v.isoformat()}
+        arbitrary_types_allowed=True
     )
     
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
-    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Last update timestamp")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     
     def update_timestamp(self) -> None:
         """Update the updated_at timestamp."""
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
 
 class TimeSeriesEntity(BaseEntity):
