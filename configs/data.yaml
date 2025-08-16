@@ -1,0 +1,193 @@
+# Data source configuration
+data:
+  # Cache settings
+  cache_size: 1000  # Maximum number of bars to cache per symbol/timeframe
+  cache_ttl_hours: 24  # Cache time-to-live in hours
+  
+  # Rate limiting
+  rate_limit_delay: 0.1  # Delay between API calls in seconds
+  max_concurrent_requests: 5  # Maximum concurrent API requests
+  
+  # Data quality
+  min_bars_for_features: 20  # Minimum bars required for feature calculation
+  max_bars_for_features: 100  # Maximum bars to use for feature calculation
+  
+  # Default timeframes
+  default_timeframes:
+    - "1m"
+    - "5m"
+    - "15m"
+    - "1h"
+    - "4h"
+    - "1d"
+  
+  # Default symbols to monitor
+  default_symbols:
+    - "BTC/USDT"
+    - "ETH/USDT"
+    - "BNB/USDT"
+    - "ADA/USDT"
+    - "SOL/USDT"
+
+# Data adapters configuration
+adapters:
+  # Binance adapter (primary data source)
+  binance:
+    enabled: true
+    name: "Binance"
+    sandbox: true  # Use testnet by default (no API key required)
+    api_key: ""  # Leave empty for public data access
+    secret: ""   # Leave empty for public data access
+    
+    # Rate limiting
+    rate_limit_delay: 0.1
+    max_requests_per_minute: 1200  # Binance public API limit
+    
+    # Data retrieval
+    max_bars_per_request: 1000  # Maximum bars per API call
+    retry_attempts: 3
+    retry_delay: 1.0
+    
+    # Supported timeframes
+    supported_timeframes:
+      - "1m"
+      - "3m"
+      - "5m"
+      - "15m"
+      - "30m"
+      - "1h"
+      - "2h"
+      - "4h"
+      - "6h"
+      - "8h"
+      - "12h"
+      - "1d"
+      - "3d"
+      - "1w"
+      - "1M"
+  
+  # Coinbase adapter (backup data source)
+  coinbase:
+    enabled: false  # Disabled by default
+    name: "Coinbase Pro"
+    sandbox: true
+    api_key: ""
+    secret: ""
+    passphrase: ""
+    
+    # Rate limiting
+    rate_limit_delay: 0.2
+    max_requests_per_minute: 30
+    
+    # Supported timeframes
+    supported_timeframes:
+      - "1m"
+      - "5m"
+      - "15m"
+      - "1h"
+      - "1d"
+  
+  # Alpha Vantage adapter (alternative data source)
+  alpha_vantage:
+    enabled: false  # Disabled by default
+    name: "Alpha Vantage"
+    api_key: ""  # Requires free API key from alphavantage.co
+    
+    # Rate limiting
+    rate_limit_delay: 12.0  # Free tier: 5 requests per minute
+    max_requests_per_minute: 5
+    
+    # Supported timeframes
+    supported_timeframes:
+      - "1min"
+      - "5min"
+      - "15min"
+      - "30min"
+      - "60min"
+      - "daily"
+      - "weekly"
+      - "monthly"
+
+# Data validation and cleaning
+validation:
+  # Price validation
+  min_price: 0.000001  # Minimum valid price
+  max_price: 1000000   # Maximum valid price
+  
+  # Volume validation
+  min_volume: 0.0      # Minimum valid volume
+  max_volume: 1000000000000  # Maximum valid volume
+  
+  # Timestamp validation
+  max_age_hours: 24    # Maximum age of data in hours
+  
+  # Outlier detection
+  price_change_threshold: 0.5  # Maximum allowed price change (50%)
+  volume_spike_threshold: 10.0  # Maximum volume spike multiplier
+
+# Feature engineering settings
+features:
+  # Technical indicators
+  technical_indicators:
+    sma_periods: [5, 10, 20, 50, 100, 200]
+    ema_periods: [12, 26]
+    rsi_period: 14
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    bollinger_period: 20
+    bollinger_std: 2.0
+    atr_period: 14
+    stochastic_k_period: 14
+    stochastic_d_period: 3
+  
+  # Price-based features
+  price_features:
+    returns_periods: [1, 5, 15, 30, 60]  # Minutes
+    volatility_periods: [20, 50]
+    momentum_periods: [10, 20, 50]
+  
+  # Volume features
+  volume_features:
+    volume_sma_periods: [20, 50]
+    volume_ratio_threshold: 1.5
+  
+  # Market microstructure
+  microstructure:
+    spread_calculation: true
+    order_book_depth: 20
+    tick_data: false  # High-frequency tick data (disabled by default)
+
+# Data storage and persistence
+storage:
+  # Local file storage
+  local:
+    enabled: true
+    data_dir: "data/raw"
+    processed_dir: "data/processed"
+    features_dir: "data/features"
+    
+    # File formats
+    raw_format: "parquet"  # parquet, csv, json
+    processed_format: "parquet"
+    features_format: "parquet"
+    
+    # Compression
+    compression: "gzip"
+    
+    # Retention
+    retention_days: 30  # Keep data for 30 days
+  
+  # Database storage (optional)
+  database:
+    enabled: false
+    type: "postgresql"  # postgresql, mysql, sqlite
+    host: "localhost"
+    port: 5432
+    database: "algo_trading"
+    username: ""
+    password: ""
+    
+    # Connection pooling
+    max_connections: 10
+    connection_timeout: 30
