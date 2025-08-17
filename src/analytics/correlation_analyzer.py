@@ -1,7 +1,7 @@
 """
 Advanced Cryptocurrency Correlation Analysis System
 
-This module provides comprehensive correlation analysis between cryptocurrencies:
+This module provides sophisticated correlation analysis between cryptocurrencies:
 - Bitcoin dominance impact analysis
 - Cross-asset correlation matrices
 - Real-time correlation tracking
@@ -22,8 +22,20 @@ from dataclasses import dataclass
 import warnings
 import os
 
-from ..data_models.market import Bar, MarketData
-from ..adapters.data.enhanced_manager import EnhancedDataManager
+# Import from correct path
+try:
+    from ..data_models.market import Bar, MarketData
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+    from src.data_models.market import Bar, MarketData
+
+try:
+    from ..adapters.data.enhanced_manager import EnhancedDataManager
+except ImportError:
+    # Fallback for direct execution
+    from src.adapters.data.enhanced_manager import EnhancedDataManager
 
 
 @dataclass
