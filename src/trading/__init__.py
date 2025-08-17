@@ -2,13 +2,13 @@
 
 from .bot import TradingBot
 from .engine import TradingEngine
-from .strategies import Strategy, MomentumStrategy, MeanReversionStrategy
 from .portfolio import Portfolio
 from .risk import RiskManager
+from .strategies import MeanReversionStrategy, MomentumStrategy, Strategy
 
 __all__ = [
     "TradingBot",
-    "TradingEngine", 
+    "TradingEngine",
     "Strategy",
     "MomentumStrategy",
     "MeanReversionStrategy",
