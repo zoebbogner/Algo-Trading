@@ -1,0 +1,69 @@
+# Algorithmic Trading Bot Configuration
+
+# Data collection settings
+data:
+  base_path: "data"
+  interval: "1d"  # 1m, 5m, 15m, 1h, 4h, 1d
+  collectors:
+    binance:
+      enabled: true
+      api_key: ""
+      secret_key: ""
+      rate_limit_delay: 1.0
+      max_retries: 3
+    coingecko:
+      enabled: true
+      api_key: ""
+      rate_limit_delay: 2.0
+      max_retries: 3
+    ccxt:
+      enabled: false
+      exchanges: ["kucoin", "okx", "gate", "huobi", "bybit"]
+
+# Trading settings
+trading:
+  initial_capital: 100000  # $100k starting capital
+  symbols: ["BTC", "ETH", "ADA", "DOT", "LINK", "LTC", "BCH", "XLM"]
+  interval_seconds: 3600  # Check for signals every hour
+  strategies:
+    - name: "momentum_btc"
+      type: "momentum"
+      parameters:
+        fast_period: 10
+        slow_period: 30
+        rsi_period: 14
+        rsi_overbought: 70
+        rsi_oversold: 30
+    - name: "mean_reversion_eth"
+      type: "mean_reversion"
+      parameters:
+        lookback_period: 20
+        std_dev_threshold: 2.0
+        rsi_period: 14
+
+# Risk management settings
+risk:
+  max_position_size: 0.1  # Max 10% of portfolio in single position
+  max_portfolio_risk: 0.02  # Max 2% portfolio risk
+  stop_loss_pct: 0.05  # 5% stop loss
+  take_profit_pct: 0.15  # 15% take profit
+
+# Machine learning settings
+ml:
+  enabled: true
+  models:
+    - "random_forest"
+    - "gradient_boosting"
+    - "neural_network"
+  training:
+    test_size: 0.2
+    validation_size: 0.1
+    random_state: 42
+
+# Reporting settings
+reporting:
+  output_dir: "reports"
+  generate_reports: true
+  report_interval: 3600  # Generate reports every hour
+  include_charts: true
+  include_metrics: true
