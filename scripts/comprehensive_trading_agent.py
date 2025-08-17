@@ -234,6 +234,8 @@ class ComprehensiveTradingAgent:
         
         # Find underrepresented categories
         for category, target in self.allocation_targets.items():
+            if self.current_capital == 0:
+                continue
             current_ratio = portfolio_categories.get(category, 0) / self.current_capital
             target_ratio = target
             
