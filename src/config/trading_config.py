@@ -1,9 +1,10 @@
 """Trading configuration using dataclasses."""
 
-import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
+
+import yaml
 
 
 @dataclass
@@ -11,16 +12,16 @@ class DataConfig:
     """Data collection configuration."""
     base_path: str = "data"
     interval: str = "1d"
-    collectors: Dict[str, Any] = field(default_factory=dict)
+    collectors: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class TradingConfig:
     """Trading strategy configuration."""
     initial_capital: float = 100000.0
-    symbols: List[str] = field(default_factory=lambda: ["BTC", "ETH", "ADA"])
+    symbols: list[str] = field(default_factory=lambda: ["BTC", "ETH", "ADA"])
     interval_seconds: int = 3600
-    strategies: List[Dict[str, Any]] = field(default_factory=list)
+    strategies: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -36,8 +37,8 @@ class RiskConfig:
 class MLConfig:
     """Machine learning configuration."""
     enabled: bool = True
-    models: List[str] = field(default_factory=lambda: ["random_forest", "gradient_boosting"])
-    training: Dict[str, Any] = field(default_factory=dict)
+    models: list[str] = field(default_factory=lambda: ["random_forest", "gradient_boosting"])
+    training: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -58,27 +59,27 @@ class TradingBotConfig:
     risk: RiskConfig = field(default_factory=RiskConfig)
     ml: MLConfig = field(default_factory=MLConfig)
     reporting: ReportingConfig = field(default_factory=ReportingConfig)
-    
+
     @classmethod
     def from_file(cls, config_path: str) -> "TradingBotConfig":
         """Load configuration from YAML file."""
         config_file = Path(config_path)
-        
+
         if not config_file.exists():
             # Return default configuration
             return cls()
-        
+
         try:
-            with config_file.open('r') as f:
+            with config_file.open("r") as f:
                 config_data = yaml.safe_load(f)
-            
+
             # Parse configuration sections
             data_config = DataConfig(**config_data.get("data", {}))
             trading_config = TradingConfig(**config_data.get("trading", {}))
             risk_config = RiskConfig(**config_data.get("risk", {}))
             ml_config = MLConfig(**config_data.get("ml", {}))
             reporting_config = ReportingConfig(**config_data.get("reporting", {}))
-            
+
             return cls(
                 data=data_config,
                 trading=trading_config,
@@ -86,13 +87,13 @@ class TradingBotConfig:
                 ml=ml_config,
                 reporting=reporting_config
             )
-            
+
         except Exception as e:
             print(f"Warning: Failed to load config from {config_path}: {e}")
             print("Using default configuration")
             return cls()
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
             "data": {
@@ -125,13 +126,13 @@ class TradingBotConfig:
                 "include_metrics": self.reporting.include_metrics
             }
         }
-    
+
     def save_to_file(self, config_path: str):
         """Save configuration to YAML file."""
         config_file = Path(config_path)
         config_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        with config_file.open('w') as f:
+
+        with config_file.open("w") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False, indent=2)
 
 
