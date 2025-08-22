@@ -1,0 +1,39 @@
+# Trading Costs Configuration for SIM Mode
+# This file defines the trading costs and slippage defaults for simulation
+
+# Exchange fees (basis points)
+fees:
+  taker_fee_bps: 15      # 0.15% taker fee
+  maker_fee_bps: 5       # 0.05% maker fee
+  default_fee_bps: 15    # Default to taker fee for conservative estimates
+
+# Slippage settings (basis points)
+slippage:
+  default_bps: 10        # 0.1% default slippage
+  stress_test_bps: 30    # 0.3% stress test slippage
+  max_bps: 50            # 0.5% maximum allowed slippage
+
+# Market impact modeling
+market_impact:
+  enabled: true
+  base_impact_bps: 5     # Base market impact per $10k trade
+  volume_threshold_usd: 10000  # Volume threshold for impact calculation
+  max_impact_bps: 20     # Maximum market impact
+
+# Transaction costs
+transaction:
+  min_trade_size_usd: 10     # Minimum trade size in USD
+  max_trade_size_usd: 100000 # Maximum trade size in USD
+  round_lot_size: 0.0001     # Round lot size for crypto
+
+# Risk adjustments
+risk:
+  cost_buffer_pct: 0.1       # 10% buffer on cost estimates
+  slippage_uncertainty: 0.2  # 20% uncertainty in slippage estimates
+  fee_uncertainty: 0.05      # 5% uncertainty in fee estimates
+
+# Simulation settings
+simulation:
+  use_realistic_costs: true  # Apply realistic cost modeling
+  include_market_impact: true # Include market impact in P&L
+  cost_reporting: true       # Generate detailed cost reports

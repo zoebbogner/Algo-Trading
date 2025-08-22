@@ -1,0 +1,30 @@
+# Base Configuration for Crypto Historical Data Collection System
+# This file contains the fundamental paths and settings
+
+# Root directories
+data_root: "data"
+reports_root: "reports"
+logs_root: "logs"
+
+# Timezone settings
+tz: "UTC"
+
+# Data processing settings
+processing:
+  batch_size: 10000
+  max_workers: 4
+  cache_ttl_hours: 24
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_rotation: "1 day"
+  max_log_files: 30
+
+# Quality control thresholds
+qc:
+  min_coverage_pct: 99.9
+  max_price_deviation: 0.5  # 50% price change threshold for outlier detection
+  min_volume_threshold: 0.0  # Minimum volume (0 for crypto)
+  max_gap_minutes: 60        # Maximum allowed gap in minutes
