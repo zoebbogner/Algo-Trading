@@ -28,15 +28,3 @@ qc:
   max_price_deviation: 0.5  # 50% price change threshold for outlier detection
   min_volume_threshold: 0.0  # Minimum volume (0 for crypto)
   max_gap_minutes: 60        # Maximum allowed gap in minutes
-
-# Configuration loading function
-def load_config():
-    """Load base configuration."""
-    import yaml
-    from pathlib import Path
-    
-    config_file = Path(__file__)
-    if config_file.exists():
-        with open(config_file, 'r') as f:
-            return yaml.safe_load(f)
-    return {}
