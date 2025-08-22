@@ -12,7 +12,7 @@ Usage:
 import argparse
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
@@ -143,15 +143,11 @@ class DataNormalizer:
             df = df[volume_mask]
         
         # Remove future timestamps
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)  # Use timezone-aware datetime
         df['ts_dt'] = pd.to_datetime(df['ts'], utc=True)
         future_mask = df['ts_dt'] <= now
         df = df[future_mask]
         df = df.drop('ts_dt', axis=1)
-        
-        # Remove duplicates
-        if self.qc_config.get('max_duplicates', 0) == 0:
-            df = df.drop_duplicates(subset=['ts', 'symbol'])
         
         # Sort by timestamp
         if self.qc_config.get('require_monotonic_ts', True):
@@ -180,7 +176,11 @@ class DataNormalizer:
         canonical_df['spread_est'] = None
         
         # Add ingestion timestamp
-        canonical_df['ingestion_ts'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+        canonical_df['ingestion_ts'] = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        # Remove duplicates after all columns are present
+        if self.qc_config.get('max_duplicates', 0) == 0:
+            canonical_df = canonical_df.drop_duplicates(subset=['ts', 'symbol'])
         
         # Ensure proper column order
         column_order = [

@@ -1,10 +1,18 @@
 # Data History Configuration
 # This file defines the data collection windows, symbols, and paths for historical data
 
-# Trading symbols to collect data for
+# Trading symbols to collect data for (Top 10 Binance USDT pairs)
 symbols:
   - "BTCUSDT"
   - "ETHUSDT"
+  - "BNBUSDT"
+  - "SOLUSDT"
+  - "XRPUSDT"
+  - "ADAUSDT"
+  - "DOGEUSDT"
+  - "AVAXUSDT"
+  - "TRXUSDT"
+  - "DOTUSDT"
 
 # Data frequency and format
 timeframe: "1m"
@@ -17,13 +25,13 @@ features_dir: "data/features"
 
 # Historical data collection windows (UTC)
 history:
-  start_ts_utc: "2024-07-01T00:00:00Z"
-  end_ts_utc: "2025-08-20T23:59:00Z"
+  start_ts_utc: "2024-01-01T00:00:00Z"
+  end_ts_utc: "2025-08-22T23:59:00Z"
 
 # Holdout period for testing (UTC)
 holdout:
   start_ts_utc: "2025-07-01T00:00:00Z"
-  end_ts_utc: "2025-08-20T23:59:00Z"
+  end_ts_utc: "2025-08-22T23:59:00Z"
 
 # Data source priorities
 sources:

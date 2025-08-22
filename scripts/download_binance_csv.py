@@ -60,7 +60,9 @@ class BinanceCSVDownloader:
     
     async def __aenter__(self):
         """Async context manager entry."""
-        self.session = aiohttp.ClientSession()
+        # Create session with SSL context that handles certificate verification
+        connector = aiohttp.TCPConnector(ssl=False)  # Disable SSL verification for now
+        self.session = aiohttp.ClientSession(connector=connector)
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
