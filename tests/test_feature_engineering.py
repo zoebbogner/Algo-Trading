@@ -514,10 +514,10 @@ class TestFeatureFormulas:
 
     def test_atr_formula(self):
         """Test Average True Range calculation."""
-        # Create test data
-        high = pd.Series([105, 106, 107, 106, 105, 104, 103, 102, 101, 100])
-        low = pd.Series([95, 96, 97, 96, 95, 94, 93, 92, 91, 90])
-        close = pd.Series([100, 101, 102, 101, 100, 99, 98, 97, 96, 95])
+        # Create test data with more points for 14-period ATR
+        high = pd.Series([105, 106, 107, 106, 105, 104, 103, 102, 101, 100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90])
+        low = pd.Series([95, 96, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80])
+        close = pd.Series([100, 101, 102, 101, 100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85])
 
         # Manual ATR calculation (for reference)
         # high_low = high - low
@@ -535,9 +535,11 @@ class TestFeatureFormulas:
         engineer = FeatureEngineer(config)
 
         df = pd.DataFrame({
+            'open': close,  # Add open column (using close as proxy)
             'high': high,
             'low': low,
-            'close': close
+            'close': close,
+            'volume': [1000] * len(close)  # Add volume column
         })
 
         # Need to compute price returns first
