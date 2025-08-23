@@ -7,6 +7,8 @@ Provides centralized logging with:
 - Log rotation and retention
 - Performance monitoring
 - Error tracking
+- Run ID tracking for provenance
+- Audit logging for LLM-assisted decisions
 """
 
 import json
@@ -15,10 +17,33 @@ import logging.handlers
 import sys
 import time
 import traceback
+import uuid
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from typing import Any
+
+
+# Global run ID for tracking operations
+_RUN_ID = None
+
+
+def get_run_id() -> str:
+    """Get the current run ID for tracking operations."""
+    global _RUN_ID
+    if _RUN_ID is None:
+        _RUN_ID = str(uuid.uuid4())[:8]
+    return _RUN_ID
+
+
+def set_run_id(run_id: str = None) -> str:
+    """Set a custom run ID or generate a new one."""
+    global _RUN_ID
+    if run_id is None:
+        _RUN_ID = str(uuid.uuid4())[:8]
+    else:
+        _RUN_ID = run_id
+    return _RUN_ID
 
 
 class StructuredFormatter(logging.Formatter):
@@ -34,7 +59,8 @@ class StructuredFormatter(logging.Formatter):
             'message': record.getMessage(),
             'module': record.module,
             'function': record.funcName,
-            'line': record.lineno
+            'line': record.lineno,
+            'run_id': get_run_id()  # Always include run_id
         }
 
         # Add exception info if present
@@ -54,6 +80,64 @@ class StructuredFormatter(logging.Formatter):
             log_entry['duration_ms'] = record.duration_ms
 
         return json.dumps(log_entry, default=str)
+
+
+class AuditLogger:
+    """Audit logger for LLM-assisted decisions and critical operations."""
+    
+    def __init__(self, audit_file: str = "logs/llm_audit.jsonl"):
+        self.audit_file = Path(audit_file)
+        self.audit_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    def log_llm_decision(self, 
+                         decision_type: str,
+                         input_data: dict,
+                         output_data: dict,
+                         confidence: float = None,
+                         reasoning: str = None,
+                         metadata: dict = None) -> None:
+        """Log an LLM-assisted decision for audit purposes."""
+        audit_entry = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'run_id': get_run_id(),
+            'decision_type': decision_type,
+            'input_data': input_data,
+            'output_data': output_data,
+            'confidence': confidence,
+            'reasoning': reasoning,
+            'metadata': metadata or {}
+        }
+        
+        # Write to audit file
+        with open(self.audit_file, 'a') as f:
+            f.write(json.dumps(audit_entry) + '\n')
+    
+    def log_trading_decision(self,
+                            symbol: str,
+                            action: str,
+                            quantity: float,
+                            price: float,
+                            timestamp: datetime,
+                            features: dict,
+                            model_output: dict,
+                            metadata: dict = None) -> None:
+        """Log a trading decision for audit purposes."""
+        audit_entry = {
+            'timestamp': timestamp.isoformat(),
+            'run_id': get_run_id(),
+            'decision_type': 'trading_decision',
+            'symbol': symbol,
+            'action': action,
+            'quantity': quantity,
+            'price': price,
+            'features': features,
+            'model_output': model_output,
+            'metadata': metadata or {}
+        }
+        
+        # Write to audit file
+        with open(self.audit_file, 'a') as f:
+            f.write(json.dumps(audit_entry) + '\n')
 
 
 class PerformanceLogger:
@@ -260,6 +344,11 @@ def get_logger(name: str) -> logging.Logger:
         Configured logger instance
     """
     return logging.getLogger(name)
+
+
+def get_audit_logger() -> AuditLogger:
+    """Get the audit logger instance."""
+    return AuditLogger()
 
 
 def get_context_logger(name: str, context: dict[str, Any] = None) -> ContextLogger:
