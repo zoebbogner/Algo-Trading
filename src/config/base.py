@@ -8,7 +8,8 @@ import yaml
 
 def load_config() -> dict[str, Any]:
     """Load base configuration from YAML file."""
-    config_file = Path(__file__).parent / "base.yaml"
+    # Read from root configs directory
+    config_file = Path(__file__).parent.parent.parent / "configs" / "base.yaml"
 
     if config_file.exists():
         with open(config_file) as f:

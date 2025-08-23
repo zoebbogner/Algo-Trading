@@ -8,7 +8,8 @@ import yaml
 
 def load_config() -> dict[str, Any]:
     """Load data history configuration from YAML file."""
-    config_file = Path(__file__).parent / "data.history.yaml"
+    # Read from root configs directory
+    config_file = Path(__file__).parent.parent.parent / "configs" / "data.history.yaml"
 
     if config_file.exists():
         with open(config_file) as f:
