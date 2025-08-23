@@ -1,139 +1,242 @@
-# Crypto Historical Data Collection System
+# Crypto Algorithmic Trading System
 
-A data-first approach to building an algorithmic trading foundation using historical 1-minute crypto candles from Binance.
+A professional-grade algorithmic trading system for cryptocurrency markets, built with enterprise best practices and a data-first approach.
 
-## 🎯 Project Status: DATA COLLECTION PHASE
+## 🎯 Goals
 
-This project focuses on **acquiring and normalizing historical data** before implementing trading strategies. We're building a robust, reproducible data pipeline that will enable SIM replay and backtesting later.
+- **Reliability**: Production-ready data pipelines with comprehensive error handling
+- **Reproducibility**: Deterministic backtests with full lineage tracking
+- **Auditability**: Complete audit trail for all operations and decisions
+- **Fast Iteration**: Modular architecture enabling rapid strategy development
 
-## 🏗️ Architecture: Data-First Design
+## 🏗️ Architecture Overview
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Data Layer    │    │   Core Layer    │    │   App Layer     │
+│                 │    │                 │    │                 │
+│ • Fetch         │───▶│ • Features      │───▶│ • CLI Tools     │
+│ • Processing    │    │ • Validation    │    │ • Orchestration │
+│ • Quality       │    │ • Business      │    │ • Reports       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### Current Implementation Status
+
+- ✅ **Data Layer**: Complete with Binance CSV/REST fetchers, data normalization, and quality control
+- ✅ **Core Layer**: Feature engineering engine with 9 feature families (42+ features)
+- ✅ **Utilities**: Comprehensive logging, validation, file operations, time utilities, and error handling
+- 🔄 **App Layer**: CLI tools in development
+- 🔄 **Testing**: Unit tests for feature engineering in progress
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.8+
+- Poetry (recommended) or pip
+- Access to Binance public data
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd Algo-Trading
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Or with Poetry
+poetry install
+```
+
+### Configuration
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Configure your data collection parameters in `configs/data.history.yaml`
+
+3. Set up feature engineering parameters in `configs/features.yaml`
+
+### Data Collection
+
+```bash
+# Download historical CSV data for top 10 crypto pairs
+python -m src.cli.bulk_historical_collection
+
+# Collect recent data via REST API
+python -m src.cli.collect_top10_crypto
+```
+
+### Feature Engineering
+
+```bash
+# Generate features for all symbols
+python -m src.cli.feature_engineering
+```
+
+## 📁 Project Structure
 
 ```
 Algo-Trading/
-├─ configs/                    # Configuration files
-│  ├─ base.yaml               # Base paths and settings
-│  ├─ data.history.yaml       # Data collection windows and symbols
-│  └─ costs.sim.yaml          # Trading costs for future SIM mode
-├─ data/                       # Data storage (not committed to git)
-│  ├─ raw/                    # Raw CSV and REST data
-│  │  └─ binance/            # Binance data sources
-│  ├─ processed/              # Normalized, QC'd data
-│  ├─ features/               # Derived technical indicators
-│  └─ cache/                  # Temporary processing cache
-├─ reports/                    # Data quality and ingestion reports
-│  └─ runs/                   # Per-run reports with unique IDs
-├─ logs/                       # Application and data quality logs
-└─ scripts/                    # Data collection and processing scripts
+├── configs/                 # Runtime configurations (YAML only)
+│   ├── base.yaml           # Base system configuration
+│   ├── data.history.yaml   # Data collection parameters
+│   └── features.yaml       # Feature engineering parameters
+├── data/                   # Data storage (gitignored)
+│   ├── raw/               # Raw data from exchanges
+│   ├── processed/         # Normalized data
+│   └── features/          # Engineered features
+├── docs/                  # Documentation
+│   ├── architecture/      # System architecture docs
+│   └── runbooks/         # Operational runbooks
+├── logs/                  # Runtime logs (gitignored)
+├── reports/               # Quality control reports (gitignored)
+├── src/                   # Source code
+│   ├── config/           # Configuration management
+│   ├── data/             # Data operations
+│   │   ├── fetch/        # Data fetching
+│   │   ├── processing/   # Data normalization
+│   │   └── feature_extraction/  # Feature engineering
+│   └── utils/            # Utility functions
+├── tests/                 # Test suite
+└── requirements.txt       # Python dependencies
 ```
 
-## 📊 Data Sources (Free, No API Keys Required)
+## 🔧 Key Components
 
-### 1. Binance Public Data Dump (Bulk CSV)
-- **Purpose**: Fast long-term backfill (months/years)
-- **Source**: https://data.binance.vision/data/spot/monthly/klines/
-- **Format**: Monthly ZIP files with 1-minute OHLCV data
-- **Coverage**: Historical data from 2017 onwards
+### Data Collection (`src/data/fetch/`)
 
-### 2. Binance Spot REST API (Public Klines)
-- **Purpose**: Recent data top-up and gap filling
-- **Endpoint**: `GET /api/v3/klines?symbol=BTCUSDT&interval=1m`
-- **Limit**: 1000 candles per request (~16h 40m coverage)
-- **Authentication**: None required for historical data
+- **BinanceCSVFetcher**: Bulk historical data from Binance public dumps
+- **BinanceRESTFetcher**: Real-time data via REST API
+- **BaseDataFetcher**: Abstract base class for all data fetchers
 
-## 🎯 Current Phase Goals
+### Data Processing (`src/data/processing/`)
 
-- [x] Project infrastructure and configuration
-- [ ] Data directory structure setup
-- [ ] Historical data collection (CSV + REST)
-- [ ] Data normalization and quality control
-- [ ] Feature engineering (basic technical indicators)
-- [ ] Data quality reports and validation
+- **DataNormalizer**: Converts raw data to canonical schema
+- **Quality Control**: Comprehensive data validation and gap detection
 
-## 🚀 Getting Started
+### Feature Engineering (`src/data/feature_extraction/`)
 
-### Prerequisites
-- Python 3.10+
-- Git
-- Internet connection for data downloads
+- **FeatureEngineer**: Professional-grade feature computation
+- **9 Feature Families**: Price returns, trend momentum, mean reversion, volatility, volume, cross-asset, microstructure, regime, and risk execution
+- **42+ Features**: Including RSI, Bollinger Bands, ATR, beta calculations, and more
 
-### Setup
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd Algo-Trading
+### Utilities (`src/utils/`)
 
-# The system will create necessary directories automatically
-# when you run the first data collection script
-```
+- **Global Logging**: Structured JSON logging with correlation IDs
+- **Validation**: Data quality and schema validation
+- **File Operations**: Safe atomic file operations
+- **Time Utilities**: UTC handling and market hours
+- **Error Handling**: Comprehensive error classification and retry logic
 
-## 📈 Data Schema
+## 📊 Data Schema
 
-### Raw Data (CSV/REST)
-- `ts_raw`: Original exchange timestamp (ms since epoch)
-- `open`, `high`, `low`, `close`: OHLC prices
-- `volume`: Base asset volume (e.g., BTC for BTCUSDT)
-- `quote_volume`: Quote asset volume (USDT)
-- `n_trades`: Number of trades in the interval
+### Raw Data
+- `ts_raw`: Original exchange timestamp
+- `open`, `high`, `low`, `close`, `volume`: OHLCV data
 - `source`: Data source identifier
-- `load_id`: Unique batch identifier
+- `load_id`: Batch identifier
 
-### Processed Data (Canonical)
-- `ts`: ISO8601 UTC timestamp (minute close)
-- `symbol`: Trading pair (e.g., BTCUSDT)
-- `open`, `high`, `low`, `close`, `volume`: Clean OHLCV
-- `spread_est`: Placeholder for future SIM mode
-- `source`: Data provenance
-- `load_id`: Batch lineage tracking
-- `ingestion_ts`: When the row was processed
+### Processed Data
+- `ts`: UTC timestamp (minute close)
+- `symbol`: Trading symbol
+- `open`, `high`, `low`, `close`, `volume`: Normalized OHLCV
+- `source`: Source identifier
+- `load_id`: Lineage tracking
+- `ingestion_ts`: Processing timestamp
 
-## 🔧 Configuration
+### Features
+- **Price & Returns**: `ret_1m`, `ret_5m`, `ret_15m`, `log_ret_1m`
+- **Trend & Momentum**: `ma_20`, `ema_20`, `trend_slope_20`, `rsi_14`
+- **Mean Reversion**: `zscore_20`, `bb_upper_20`, `bb_lower_20`
+- **Volatility & Risk**: `vol_20`, `atr_14`, `realized_vol_30`
+- **Volume & Liquidity**: `vol_ma_20`, `volume_spike_flag_20`
+- **Cross-Asset**: `beta_to_btc_720`, `ratio_eth_btc`
+- **Regime**: `trend_regime_score`, `vol_regime_flag`
+- **Risk & Execution**: `position_cap_hint`, `stop_distance_hint`
 
-### Data Collection Windows
-- **History Period**: 2024-07-01 to 2025-08-20 (configurable)
-- **Holdout Period**: 2025-07-01 to 2025-08-20 (for testing)
-- **Symbols**: BTCUSDT, ETHUSDT (expandable)
-- **Frequency**: 1-minute bars
-- **Timezone**: UTC throughout
+## 🧪 Testing
 
-### Quality Control
-- Monotonic timestamps per symbol
-- No duplicate (ts, symbol) pairs
-- No future timestamps
-- Price > 0, Volume ≥ 0
-- Coverage reporting (expected vs. actual minutes)
+```bash
+# Run all tests
+pytest
 
-## 📋 Workflow
+# Run specific test categories
+pytest tests/test_feature_engineering.py
+pytest tests/test_data_validation.py
+```
 
-1. **Bulk CSV Download**: Download monthly ZIP files for target period
-2. **REST Top-up**: Fetch recent data not yet in CSVs
-3. **Normalization**: Convert to canonical schema, sort, dedupe
-4. **Quality Control**: Validate data integrity and coverage
-5. **Feature Engineering**: Calculate basic technical indicators
-6. **Reporting**: Generate quality and coverage reports
+## 📈 Quality Control
 
-## 🎯 Next Steps
+The system includes comprehensive quality control:
 
-1. Set up directory structure
-2. Configure data collection parameters
-3. Download initial CSV datasets
-4. Implement REST API top-up
-5. Build normalization pipeline
-6. Add quality control checks
+- **Data Validation**: Schema compliance, timestamp monotonicity, OHLCV integrity
+- **Feature QC**: Non-NA rates, distribution sanity checks, winsorization
+- **Lineage Tracking**: Full audit trail from raw data to features
+- **Reports**: Automated quality reports for each run
 
-## 📚 Resources
+## 🔒 Security & Compliance
 
-- [Binance Data Dump](https://data.binance.vision/)
-- [Binance REST API Documentation](https://binance-docs.github.io/apidocs/spot/en/)
-- [Data Quality Best Practices](https://www.getdbt.com/blog/data-quality/)
+- **No Secrets in Code**: All sensitive data via environment variables
+- **Read-Only by Default**: Exchange keys configured for data access only
+- **Audit Logging**: Complete operation logging for compliance
+
+## 🚧 Current Limitations
+
+- **Single Exchange**: Currently Binance-only (extensible architecture)
+- **Historical Focus**: Real-time trading not yet implemented
+- **Single Timeframe**: 1-minute bars only (extensible)
+
+## 🗺️ Roadmap
+
+### Phase 1: Data Foundation ✅
+- [x] Historical data collection
+- [x] Data normalization pipeline
+- [x] Feature engineering engine
+- [x] Quality control system
+
+### Phase 2: Core Engine 🔄
+- [ ] Backtesting simulator
+- [ ] Strategy framework
+- [ ] Risk management
+- [ ] Performance analytics
+
+### Phase 3: Advanced Features 📋
+- [ ] Multi-exchange support
+- [ ] Real-time data streaming
+- [ ] Machine learning integration
+- [ ] Portfolio optimization
 
 ## 🤝 Contributing
 
-This is a personal project focused on building a robust data foundation for algorithmic trading. The approach prioritizes data quality, reproducibility, and clear separation of concerns.
+1. Follow the enterprise coding standards
+2. Write tests for new functionality
+3. Update documentation
+4. Use conventional commit messages
+
+## 📚 Documentation
+
+- [Architecture Guide](docs/architecture/README.md)
+- [Data Collection Runbook](docs/runbooks/data_collection.md)
+- [Feature Engineering Guide](docs/runbooks/feature_engineering.md)
+- [Troubleshooting](docs/runbooks/troubleshooting.md)
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+[License information]
+
+## 🆘 Support
+
+For issues and questions:
+1. Check the [troubleshooting guide](docs/runbooks/troubleshooting.md)
+2. Review the [runbooks](docs/runbooks/)
+3. Open an issue with detailed error information
 
 ---
 
-**Note**: This system is designed for historical data collection and analysis. No live trading functionality is implemented in this phase.
+**Status**: Data Foundation Complete ✅ | Core Engine In Development 🔄 | Production Ready: Q1 2025 🎯

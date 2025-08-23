@@ -1,22 +1,23 @@
 """Base configuration for the crypto historical data collection system."""
 
-import yaml
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
+
+import yaml
 
 
-def load_config() -> Dict[str, Any]:
+def load_config() -> dict[str, Any]:
     """Load base configuration from YAML file."""
     config_file = Path(__file__).parent / "base.yaml"
-    
+
     if config_file.exists():
-        with open(config_file, 'r') as f:
+        with open(config_file) as f:
             return yaml.safe_load(f)
-    
+
     # Return default configuration if file doesn't exist
     return {
         "data_root": "data",
-        "reports_root": "reports", 
+        "reports_root": "reports",
         "logs_root": "logs",
         "tz": "UTC",
         "processing": {
