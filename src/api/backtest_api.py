@@ -11,6 +11,7 @@ Provides REST API for:
 import sys
 from pathlib import Path
 
+import pandas as pd
 from flask import Blueprint, jsonify, request
 
 # Add project root to path
@@ -43,35 +44,35 @@ def run_backtest():
     """Run a backtest with specified parameters."""
     try:
         data = request.get_json()
+        
+        # Required parameters
         features_file = data.get('features_file')
-        start_date = data.get('start_date')
-        end_date = data.get('end_date')
-        symbols = data.get('symbols', ['BTCUSDT'])
-        initial_capital = data.get('initial_capital', 100000)
-        commission_rate = data.get('commission_rate', 0.001)
-        slippage = data.get('slippage', 0.0005)
-
         if not features_file:
             return jsonify({
                 'success': False,
                 'error': 'features_file is required'
             }), 400
 
+        # Optional parameters with defaults
+        symbols = data.get('symbols', ['BTCUSDT'])
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        initial_capital = data.get('initial_capital', 100000)
+        commission_rate = data.get('commission_rate', 0.001)
+        slippage = data.get('slippage', 0.0005)
+        
+        # Risk management parameters
+        max_position_size = data.get('max_position_size', 0.05)  # 5% max per position
+        max_portfolio_risk = data.get('max_portfolio_risk', 0.20)  # 20% max portfolio risk
+        stop_loss_pct = data.get('stop_loss_pct', 0.05)  # 5% stop loss
+        take_profit_pct = data.get('take_profit_pct', 0.10)  # 10% take profit
+
         logger.info("Starting backtest execution")
 
-        # Validate features file
-        features_path = Path(features_file)
-        if not features_path.exists():
-            return jsonify({
-                'success': False,
-                'error': f'Features file does not exist: {features_file}'
-            }), 400
-
         # Load features data
-        import pandas as pd
         df = pd.read_parquet(features_file)
-
-        # Filter by date range if specified
+        
+        # Filter by date range
         if start_date:
             df = df[df['ts'] >= start_date]
         if end_date:
@@ -94,6 +95,12 @@ def run_backtest():
             'costs': {
                 'fee_rate': commission_rate,
                 'slippage_bps': int(slippage * 10000)  # Convert to basis points
+            },
+            'risk': {
+                'max_position_size': max_position_size,
+                'max_portfolio_risk': max_portfolio_risk,
+                'stop_loss_pct': stop_loss_pct,
+                'take_profit_pct': take_profit_pct
             },
             'initial_capital': initial_capital
         }
@@ -134,7 +141,8 @@ def run_backtest():
                 'total_trades': engine.total_trades,
                 'winning_trades': engine.winning_trades,
                 'losing_trades': engine.losing_trades,
-                'win_rate': engine.winning_trades / engine.total_trades if engine.total_trades > 0 else 0
+                'win_rate': engine.winning_trades / engine.total_trades if engine.total_trades > 0 else 0,
+                'profit_factor': engine.total_pnl / abs(engine.total_pnl) if engine.total_pnl != 0 else 0
             }
         }
 
@@ -174,14 +182,20 @@ def run_backtest():
                 'total_rows': len(df),
                 'initial_capital': initial_capital,
                 'commission_rate': commission_rate,
-                'slippage': slippage
+                'slippage': slippage,
+                'risk_management': {
+                    'max_position_size': max_position_size,
+                    'max_portfolio_risk': max_portfolio_risk,
+                    'stop_loss_pct': stop_loss_pct,
+                    'take_profit_pct': take_profit_pct
+                }
             }
         }
 
         return jsonify(response_data)
 
     except Exception as e:
-        logger.error(f"Error during backtest execution: {e}")
+        logger.error(f"Backtest execution failed: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

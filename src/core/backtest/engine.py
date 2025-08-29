@@ -23,6 +23,7 @@ class BacktestEngine:
         # Trading state
         self.positions = {}  # symbol -> quantity
         self.position_prices = {}  # symbol -> average entry price
+        self.position_stops = {}  # symbol -> stop loss price
         self.cash = 100000.0  # Starting cash
         self.equity_history = []
         self.trade_history = []
@@ -32,6 +33,12 @@ class BacktestEngine:
         self.total_trades = 0
         self.winning_trades = 0
         self.losing_trades = 0
+
+        # Risk management
+        self.max_position_size = config.get('risk', {}).get('max_position_size', 0.05)  # 5% max per position
+        self.max_portfolio_risk = config.get('risk', {}).get('max_portfolio_risk', 0.20)  # 20% max portfolio risk
+        self.stop_loss_pct = config.get('risk', {}).get('stop_loss_pct', 0.05)  # 5% stop loss
+        self.take_profit_pct = config.get('risk', {}).get('take_profit_pct', 0.10)  # 10% take profit
 
         # Load trading costs
         self.fee_rate = config.get('costs', {}).get('fee_rate', 0.001)  # 0.1%
@@ -44,6 +51,7 @@ class BacktestEngine:
         self.logger.info(f"Backtest engine initialized with run_id: {self.run_id}")
         self.logger.info(f"Starting cash: ${self.cash:,.2f}")
         self.logger.info(f"Fee rate: {self.fee_rate:.3f}, Slippage: {self.slippage_bps} bps")
+        self.logger.info(f"Risk settings: Max position {self.max_position_size*100:.1f}%, Stop loss {self.stop_loss_pct*100:.1f}%, Take profit {self.take_profit_pct*100:.1f}%")
 
     def run_backtest(self, data_path: str, symbols: list[str], start_date: str = None, end_date: str = None) -> bool:
         """Run backtest on historical data."""
@@ -127,17 +135,24 @@ class BacktestEngine:
         for i, ts in enumerate(timestamps):
             current_data = data[data['ts'] == ts]
 
+            # Check stop losses and take profits first
+            self._check_risk_management(current_data)
+
             # Make trading decisions for each symbol
             for _, row in current_data.iterrows():
                 symbol = row['symbol']
                 close_price = row['close']
+
+                # Skip if we already have a position and it's not time to sell
+                if symbol in self.positions and self.positions[symbol] > 0:
+                    continue
 
                 # Simple strategy: buy if price > 20-period MA, sell if < 20-period MA
                 if 'ma_20' in row and pd.notna(row['ma_20']):
                     ma_20 = row['ma_20']
 
                     if close_price > ma_20 * 1.01:  # Buy signal with 1% buffer
-                        self._execute_trade(symbol, 'buy', 1.0, close_price, ts, row)
+                        self._execute_trade(symbol, 'buy', close_price, ts, row)
                     elif close_price < ma_20 * 0.99:  # Sell signal with 1% buffer
                         if symbol in self.positions and self.positions[symbol] > 0:
                             self._execute_trade(symbol, 'sell', self.positions[symbol], close_price, ts, row)
@@ -149,14 +164,74 @@ class BacktestEngine:
             if i % 1000 == 0:
                 self.logger.info(f"Processed {i}/{len(timestamps)} timestamps")
 
-    def _execute_trade(self, symbol: str, action: str, quantity: float, price: float, timestamp: datetime, features: pd.Series) -> None:
+    def _check_risk_management(self, current_data: pd.DataFrame) -> None:
+        """Check and execute stop losses and take profits."""
+        for _, row in current_data.iterrows():
+            symbol = row['symbol']
+            close_price = row['close']
+            
+            if symbol in self.positions and self.positions[symbol] > 0:
+                entry_price = self.position_prices[symbol]
+                
+                # Check stop loss
+                stop_loss_price = entry_price * (1 - self.stop_loss_pct)
+                if close_price <= stop_loss_price:
+                    self.logger.info(f"Stop loss triggered for {symbol} at ${close_price:.2f} (entry: ${entry_price:.2f})")
+                    self._execute_trade(symbol, 'sell', close_price, row['ts'], row)
+                    continue
+                
+                # Check take profit
+                take_profit_price = entry_price * (1 + self.take_profit_pct)
+                if close_price >= take_profit_price:
+                    self.logger.info(f"Take profit triggered for {symbol} at ${close_price:.2f} (entry: ${entry_price:.2f})")
+                    self._execute_trade(symbol, 'sell', close_price, row['ts'], row)
+                    continue
+
+    def _calculate_position_size(self, symbol: str, price: float) -> float:
+        """Calculate position size using Kelly Criterion and risk management."""
+        # Get current portfolio value
+        portfolio_value = self.cash
+        for sym, qty in self.positions.items():
+            if qty > 0:
+                portfolio_value += qty * self.position_prices[sym]
+        
+        # Calculate Kelly position size (simplified)
+        # In a real implementation, this would use win rate and average win/loss
+        win_rate = 0.4  # Conservative estimate
+        avg_win = 0.05  # 5% average win
+        avg_loss = 0.03  # 3% average loss
+        
+        if avg_loss > 0:
+            kelly_fraction = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
+            kelly_fraction = max(0, min(kelly_fraction, self.max_position_size))  # Cap at max position size
+        else:
+            kelly_fraction = self.max_position_size * 0.5  # Conservative fallback
+        
+        # Calculate position size in currency
+        position_value = portfolio_value * kelly_fraction
+        
+        # Convert to quantity
+        quantity = position_value / price
+        
+        # Ensure we don't exceed available cash
+        max_quantity = self.cash / (price * (1 + self.fee_rate))
+        quantity = min(quantity, max_quantity)
+        
+        return max(0, quantity)
+
+    def _execute_trade(self, symbol: str, action: str, price: float, timestamp: datetime, features: pd.Series) -> None:
         """Execute a trade with costs and slippage."""
         # Calculate execution price with slippage
         slippage_multiplier = 1 + (self.slippage_bps / 10000)
         if action == 'buy':
             execution_price = price * slippage_multiplier
+            # Calculate position size using Kelly Criterion
+            quantity = self._calculate_position_size(symbol, execution_price)
+            if quantity <= 0:
+                return  # Skip trade if no position size
         else:
             execution_price = price / slippage_multiplier
+            quantity = self.positions[symbol]  # Sell entire position
 
         # Calculate costs
         trade_value = quantity * execution_price
@@ -179,11 +254,14 @@ class BacktestEngine:
             if symbol not in self.positions:
                 self.positions[symbol] = 0
                 self.position_prices[symbol] = execution_price
+                self.position_stops[symbol] = execution_price * (1 - self.stop_loss_pct)
             else:
                 # Update average entry price
                 total_cost = (self.positions[symbol] * self.position_prices[symbol]) + (quantity * execution_price)
                 total_quantity = self.positions[symbol] + quantity
                 self.position_prices[symbol] = total_cost / total_quantity
+                # Update stop loss to new average entry
+                self.position_stops[symbol] = self.position_prices[symbol] * (1 - self.stop_loss_pct)
             
             self.positions[symbol] += quantity
             self.cash -= (trade_value + fees)
@@ -195,6 +273,7 @@ class BacktestEngine:
             if self.positions[symbol] <= 0:
                 del self.positions[symbol]
                 del self.position_prices[symbol]
+                del self.position_stops[symbol]
 
         # Update total PnL
         self.total_pnl += trade_pnl
@@ -215,7 +294,7 @@ class BacktestEngine:
         self.trade_history.append(trade_record)
 
         self.total_trades += 1
-        self.logger.debug(f"Executed {action} {quantity} {symbol} at ${execution_price:.4f}, PnL: ${trade_pnl:.2f}")
+        self.logger.debug(f"Executed {action} {quantity:.4f} {symbol} at ${execution_price:.4f}, PnL: ${trade_pnl:.2f}")
 
     def _record_equity(self, timestamp: datetime, current_data: pd.DataFrame) -> None:
         """Record current equity value."""
@@ -301,6 +380,14 @@ class BacktestEngine:
         equity_df['drawdown'] = (equity_df['portfolio_value'] - equity_df['cummax']) / equity_df['cummax']
         max_drawdown = equity_df['drawdown'].min()
 
+        # Profit factor
+        if self.losing_trades > 0:
+            avg_win = self.total_pnl / self.winning_trades if self.winning_trades > 0 else 0
+            avg_loss = abs(self.total_pnl / self.losing_trades) if self.losing_trades > 0 else 0
+            profit_factor = avg_win / avg_loss if avg_loss > 0 else 0
+        else:
+            profit_factor = 0
+
         metrics = {
             'run_id': self.run_id,
             'initial_equity': initial_equity,
@@ -313,6 +400,7 @@ class BacktestEngine:
             'winning_trades': self.winning_trades,
             'losing_trades': self.losing_trades,
             'hit_rate': hit_rate,
+            'profit_factor': profit_factor,
             'total_pnl': self.total_pnl,
             'final_cash': self.cash,
             'final_positions': dict(self.positions)
@@ -323,6 +411,7 @@ class BacktestEngine:
         self.logger.info(f"Sharpe ratio: {sharpe_ratio:.2f}")
         self.logger.info(f"Max drawdown: {max_drawdown*100:.2f}%")
         self.logger.info(f"Hit rate: {hit_rate*100:.1f}%")
+        self.logger.info(f"Profit factor: {profit_factor:.2f}")
         self.logger.info(f"Total PnL: ${self.total_pnl:,.2f}")
 
         return metrics
