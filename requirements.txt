@@ -1,27 +1,28 @@
-# Core dependencies for crypto historical data collection
-aiohttp>=3.8.0
+# Core dependencies
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=12.0.0
 pyyaml>=6.0
-pandas>=1.5.0
-numpy>=1.21.0
-
-# Web framework and API
+click>=8.0.0
 flask>=2.3.0
-flask-cors>=4.0.0
+requests>=2.31.0
+aiohttp>=3.8.0
+asyncio>=3.4.3
 
-# System monitoring
-psutil>=5.9.0
+# Machine Learning dependencies
+scikit-learn>=1.3.0
+joblib>=1.3.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
 
-# Data processing and storage
-pyarrow>=10.0.0  # For Parquet file support
-fastparquet>=0.8.0  # Alternative Parquet support
+# Data processing
+pytz>=2023.3
+python-dateutil>=2.8.2
+
+# Logging and monitoring
+structlog>=23.1.0
 
 # Development and testing
-pytest>=7.0.0
+pytest>=7.4.0
 pytest-asyncio>=0.21.0
-black>=22.0.0
-ruff>=0.0.200
-
-# Optional: For enhanced data analysis
-matplotlib>=3.5.0
-seaborn>=0.11.0
-jupyter>=1.0.0
+ruff>=0.0.280

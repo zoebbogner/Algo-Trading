@@ -1,0 +1,192 @@
+# Machine Learning Configuration for Trading System
+
+# ML Models Configuration
+ml_models:
+  ensemble_method: "voting"  # voting, stacking, or individual
+  confidence_threshold: 0.6  # Minimum confidence for ML signals
+  model_weights:
+    random_forest: 0.25
+    gradient_boosting: 0.25
+    logistic_regression: 0.2
+    svm: 0.15
+    neural_network: 0.15
+
+# ML Training Configuration
+ml_training:
+  cv_folds: 5  # Cross-validation folds
+  test_size: 0.2  # Test set size
+  random_state: 42
+  target_method: "future_return"  # future_return, trend_following, mean_reversion
+  future_periods: 5  # Periods ahead for future return calculation
+  return_threshold_multiplier: 0.5  # Multiplier for dynamic threshold
+
+# Feature Engineering Configuration
+feature_engineering:
+  # Price features
+  return_periods: [1, 2, 3, 5, 10, 20]
+  momentum_periods: [5, 10, 20, 50]
+  volatility_periods: [10, 20, 50]
+  
+  # Technical indicators
+  ma_periods: [5, 10, 20, 50, 100]
+  rsi_periods: [7, 14, 21]
+  bb_periods: [20, 50]
+  macd_params:
+    fast: 12
+    slow: 26
+    signal: 9
+  
+  # Statistical features
+  statistical_periods: [20, 50]
+  percentile_levels: [10, 25, 75, 90]
+  
+  # Time features
+  include_time_features: true
+  include_cyclical_encoding: true
+  
+  # Cross-asset features
+  include_cross_asset: true
+  correlation_period: 20
+  
+  # Feature interactions
+  include_interactions: true
+  
+  # Dimensionality reduction
+  use_pca: true
+  pca_variance: 0.95  # Keep 95% variance
+
+# Model Hyperparameters
+model_hyperparameters:
+  random_forest:
+    n_estimators: [50, 100, 200]
+    max_depth: [5, 10, 15, null]
+    min_samples_split: [2, 5, 10]
+    min_samples_leaf: [1, 2, 4]
+    random_state: 42
+    n_jobs: -1
+  
+  gradient_boosting:
+    n_estimators: [50, 100, 200]
+    learning_rate: [0.01, 0.1, 0.2]
+    max_depth: [3, 6, 9]
+    subsample: [0.8, 0.9, 1.0]
+    random_state: 42
+  
+  logistic_regression:
+    C: [0.1, 1.0, 10.0, 100.0]
+    penalty: ["l1", "l2"]
+    solver: ["liblinear", "saga"]
+    max_iter: 1000
+    random_state: 42
+  
+  svm:
+    C: [0.1, 1.0, 10.0]
+    kernel: ["rbf", "linear"]
+    gamma: ["scale", "auto", 0.001, 0.01]
+    probability: true
+    random_state: 42
+  
+  neural_network:
+    hidden_layer_sizes: [(50,), (100,), (100, 50), (100, 50, 25)]
+    learning_rate_init: [0.001, 0.01, 0.1]
+    alpha: [0.0001, 0.001, 0.01]
+    activation: "relu"
+    solver: "adam"
+    max_iter: 1000
+    random_state: 42
+
+# Ensemble Configuration
+ensemble:
+  method: "voting"  # voting, stacking, blending
+  voting_type: "soft"  # soft or hard voting
+  strategy_weights:
+    ml: 0.7
+    technical: 0.25
+    sentiment: 0.05
+  
+  # Stacking configuration (if using stacking)
+  stacking:
+    meta_learner: "logistic_regression"
+    cv_folds: 5
+    use_proba: true
+
+# Signal Generation Configuration
+signal_generation:
+  # ML signal thresholds
+  ml_confidence_threshold: 0.6
+  ml_high_confidence_threshold: 0.8
+  
+  # Signal combination
+  combine_ml_traditional: true
+  ml_fallback_to_traditional: true
+  
+  # Signal filtering
+  min_signal_strength: 0.3
+  signal_smoothing: false
+  smoothing_period: 3
+
+# Risk Management for ML
+ml_risk_management:
+  # Position sizing
+  use_ml_confidence_for_sizing: true
+  confidence_position_multiplier: 1.5
+  
+  # Stop loss
+  dynamic_stop_loss: true
+  ml_confidence_stop_loss_multiplier: 0.8
+  
+  # Take profit
+  dynamic_take_profit: true
+  ml_confidence_take_profit_multiplier: 1.2
+
+# Performance Monitoring
+performance_monitoring:
+  # Model performance tracking
+  track_model_performance: true
+  performance_update_frequency: "daily"
+  
+  # Model retraining
+  auto_retrain: false
+  retrain_threshold: 0.05  # Retrain if performance drops by 5%
+  retrain_frequency: "monthly"
+  
+  # Performance metrics
+  track_metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+    - roc_auc
+    - sharpe_ratio
+    - max_drawdown
+    - win_rate
+
+# Data Management
+data_management:
+  # Feature storage
+  save_features: true
+  features_format: "parquet"
+  features_compression: "snappy"
+  
+  # Model storage
+  save_models: true
+  models_format: "joblib"
+  model_versioning: true
+  
+  # Results storage
+  save_results: true
+  results_format: "json"
+  include_predictions: true
+  include_probabilities: true
+
+# Logging and Debugging
+logging:
+  ml_log_level: "INFO"
+  log_feature_importance: true
+  log_model_predictions: false
+  log_training_progress: true
+  
+  # Debug options
+  debug_mode: false
+  save_intermediate_results: false
+  verbose_training: false

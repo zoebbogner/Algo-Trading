@@ -1,84 +1,111 @@
-"""Minimal backtesting engine for crypto algorithmic trading."""
+"""Enhanced Backtesting Engine with ML Integration."""
 
-from datetime import datetime
-from pathlib import Path
-from typing import Any
-
-import numpy as np
 import pandas as pd
+import numpy as np
+from datetime import datetime
+from typing import Dict, List, Optional
+import logging
+from pathlib import Path
 
-from src.utils.config import load_and_log_config
-from src.utils.logging import get_logger, get_run_id
+# Import ML components
+try:
+    from ..ml import MLSignalGenerator, MLFeatureEngineer
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+    logging.warning("ML components not available. Using traditional signals only.")
+
+logger = logging.getLogger(__name__)
 
 
 class BacktestEngine:
-    """Minimal backtesting engine with trade-next-bar execution."""
-
-    def __init__(self, config: dict):
-        """Initialize the backtesting engine."""
+    """Enhanced backtesting engine with ML integration."""
+    
+    def __init__(self, config: Dict):
+        """Initialize backtesting engine."""
         self.config = config
-        self.logger = get_logger(__name__)
-        self.run_id = get_run_id()
-
-        # Trading state
-        self.positions = {}  # symbol -> quantity
-        self.position_prices = {}  # symbol -> average entry price
-        self.position_stops = {}  # symbol -> stop loss price
-        self.cash = 100000.0  # Starting cash
-        self.equity_history = []
-        self.trade_history = []
-
-        # Performance metrics
+        self.logger = logging.getLogger(__name__)
+        
+        # Basic configuration
+        self.initial_capital = config.get('initial_capital', 100000.0)
+        self.commission_rate = config.get('costs', {}).get('commission_rate', 0.001)
+        self.slippage_bps = config.get('costs', {}).get('slippage_bps', 5)
+        self.fee_rate = self.commission_rate
+        self.slippage = self.slippage_bps / 10000
+        
+        # Risk management
+        risk_config = config.get('risk', {})
+        self.max_position_size = risk_config.get('max_position_size', 0.05)
+        self.max_portfolio_risk = risk_config.get('max_portfolio_risk', 0.2)
+        self.stop_loss_pct = risk_config.get('stop_loss_pct', 0.05)
+        self.take_profit_pct = risk_config.get('take_profit_pct', 0.10)
+        
+        # ML configuration
+        self.use_ml = config.get('use_ml', False) and ML_AVAILABLE
+        if self.use_ml:
+            self.ml_config = config.get('ml', {})
+            self.ml_feature_engineer = MLFeatureEngineer(self.ml_config)
+            self.ml_signal_generator = MLSignalGenerator(self.ml_config)
+            self.ml_models_trained = False
+            self.ml_weight = self.ml_config.get('weight', 0.7)
+            self.technical_weight = 1.0 - self.ml_weight
+        
+        # Initialize state
+        self.reset()
+        
+        # Generate run ID
+        self.run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        self.logger.info(f"BacktestEngine initialized with ML: {self.use_ml}")
+    
+    def reset(self):
+        """Reset engine state."""
+        self.cash = self.initial_capital
+        self.positions = {}
+        self.position_prices = {}
+        self.position_stops = {}
         self.total_pnl = 0.0
         self.total_trades = 0
         self.winning_trades = 0
         self.losing_trades = 0
-
-        # Risk management
-        self.max_position_size = config.get('risk', {}).get('max_position_size', 0.05)  # 5% max per position
-        self.max_portfolio_risk = config.get('risk', {}).get('max_portfolio_risk', 0.20)  # 20% max portfolio risk
-        self.stop_loss_pct = config.get('risk', {}).get('stop_loss_pct', 0.05)  # 5% stop loss
-        self.take_profit_pct = config.get('risk', {}).get('take_profit_pct', 0.10)  # 10% take profit
-
-        # Load trading costs
-        self.fee_rate = config.get('costs', {}).get('fee_rate', 0.001)  # 0.1%
-        self.slippage_bps = config.get('costs', {}).get('slippage_bps', 5)  # 5 bps
-
-        # Ensure output directories exist
-        self.reports_dir = Path(f"reports/runs/{self.run_id}")
-        self.reports_dir.mkdir(parents=True, exist_ok=True)
-
-        self.logger.info(f"Backtest engine initialized with run_id: {self.run_id}")
-        self.logger.info(f"Starting cash: ${self.cash:,.2f}")
-        self.logger.info(f"Fee rate: {self.fee_rate:.3f}, Slippage: {self.slippage_bps} bps")
-        self.logger.info(f"Risk settings: Max position {self.max_position_size*100:.1f}%, Stop loss {self.stop_loss_pct*100:.1f}%, Take profit {self.take_profit_pct*100:.1f}%")
-
-    def run_backtest(self, data_path: str, symbols: list[str], start_date: str = None, end_date: str = None) -> bool:
-        """Run backtest on historical data."""
+        self.trade_history = []
+        self.equity_curve = []
+        
+        self.logger.info("Engine state reset")
+    
+    def run_backtest(self, data_path: str, symbols: List[str], start_date: Optional[str] = None, end_date: Optional[str] = None) -> bool:
+        """Run backtest with optional ML integration."""
         try:
-            self.logger.info(f"Starting backtest for symbols: {symbols}")
-
-            # Load data
+            self.logger.info(f"Starting backtest for {len(symbols)} symbols")
+            
+            # Load and prepare data
             data = self._load_data(data_path, symbols, start_date, end_date)
-            if data is None or data.empty:
-                self.logger.error("No data loaded for backtest")
+            if data is None:
                 return False
-
-            self.logger.info(f"Loaded {len(data)} data points")
-
+            
+            # Prepare ML features if enabled
+            if self.use_ml:
+                data = self._prepare_ml_features(data)
+                if not self.ml_models_trained:
+                    self.logger.warning("ML models not trained. Training on available data...")
+                    self._train_ml_models(data)
+            
             # Run simulation
             self._run_simulation(data)
-
-            # Generate reports
-            self._generate_reports()
-
+            
+            # Calculate final metrics
+            self._calculate_metrics()
+            
+            # Save results
+            self._save_results()
+            
             self.logger.info("Backtest completed successfully")
             return True
-
+            
         except Exception as e:
             self.logger.error(f"Backtest failed: {e}")
             return False
-
+    
     def _load_data(self, data_path: str, symbols: list[str], start_date: str = None, end_date: str = None) -> pd.DataFrame | None:
         """Load historical data for backtesting."""
         try:
@@ -124,51 +151,122 @@ class BacktestEngine:
         except Exception as e:
             self.logger.error(f"Error loading data: {e}")
             return None
-
-    def _run_simulation(self, data: pd.DataFrame) -> None:
-        """Run the trading simulation."""
-        self.logger.info("Starting trading simulation")
-
-        # Group by timestamp to process all symbols at once
-        timestamps = sorted(data['ts'].unique())
-
-        for i, ts in enumerate(timestamps):
-            current_data = data[data['ts'] == ts]
-
-            # Check stop losses and take profits first
-            self._check_risk_management(current_data)
-
-            # Make trading decisions for each symbol
-            for _, row in current_data.iterrows():
-                symbol = row['symbol']
-                close_price = row['close']
-
-                # Skip if we already have a position and it's not time to sell
-                if symbol in self.positions and self.positions[symbol] > 0:
-                    continue
-
-                # Enhanced strategy with multiple indicators
-                signal = self._generate_trading_signal(row)
-                
-                if signal == 'buy':
-                    self._execute_trade(symbol, 'buy', close_price, ts, row)
-                elif signal == 'sell' and symbol in self.positions and self.positions[symbol] > 0:
-                    self._execute_trade(symbol, 'sell', close_price, ts, row)
-
-            # Record equity at each timestamp
-            self._record_equity(ts, current_data)
-
-            # Progress logging
-            if i % 1000 == 0:
-                self.logger.info(f"Processed {i}/{len(timestamps)} timestamps")
-
+    
+    def _prepare_ml_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Prepare ML features for the dataset."""
+        self.logger.info("Preparing ML features...")
+        
+        try:
+            # Create ML features
+            data_with_features = self.ml_feature_engineer.create_ml_features(data)
+            
+            # Fit scaler on training data
+            self.ml_feature_engineer.fit_scaler(data_with_features)
+            
+            self.logger.info(f"ML features prepared: {len(self.ml_feature_engineer.feature_columns)} features")
+            return data_with_features
+            
+        except Exception as e:
+            self.logger.error(f"Error preparing ML features: {e}")
+            return data
+    
+    def _train_ml_models(self, data: pd.DataFrame) -> None:
+        """Train ML models on available data."""
+        try:
+            self.logger.info("Training ML models...")
+            
+            # Prepare target variable (future returns)
+            data_with_target = self._prepare_target_variable(data)
+            
+            # Train models
+            self.ml_signal_generator.train_models(data_with_target, 'target')
+            
+            self.ml_models_trained = True
+            self.logger.info("ML models trained successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error training ML models: {e}")
+            self.use_ml = False
+    
+    def _prepare_target_variable(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Prepare target variable for ML training."""
+        data = data.copy()
+        
+        # Create target: 1 for buy, 0 for sell, 2 for hold
+        # Based on future returns
+        future_returns = data['close'].pct_change(5).shift(-5)  # 5-period ahead return
+        threshold = future_returns.std() * 0.5  # Dynamic threshold
+        
+        data['target'] = np.where(future_returns > threshold, 1, 0)
+        data['target'] = np.where(future_returns < -threshold, 2, data['target'])
+        
+        # Remove rows where we can't calculate future returns
+        data = data.dropna(subset=['target'])
+        
+        self.logger.info(f"Target variable prepared. Distribution: {data['target'].value_counts().to_dict()}")
+        return data
+    
+    def _generate_ml_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Generate ML trading signals."""
+        if not self.ml_models_trained:
+            self.logger.warning("ML models not trained. Using traditional signals only.")
+            return data
+        
+        try:
+            # Generate ML signals
+            data_with_ml = self.ml_signal_generator.generate_signals(data)
+            
+            self.logger.info("ML signals generated successfully")
+            return data_with_ml
+            
+        except Exception as e:
+            self.logger.error(f"Error generating ML signals: {e}")
+            return data
+    
     def _generate_trading_signal(self, row: pd.Series) -> str:
-        """Generate aggressive trading signals with multiple strategies for higher trade frequency."""
+        """Generate trading signal using traditional indicators and optional ML."""
         signal = 'hold'
         
         # Check if we have basic indicators
         if not all(indicator in row and pd.notna(row[indicator]) for indicator in ['ma_20', 'ma_50', 'rsi_14']):
             return signal
+        
+        close_price = row['close']
+        ma_20 = row['ma_20']
+        ma_50 = row['ma_50']
+        rsi = row['rsi_14']
+        
+        # Traditional signal generation
+        traditional_signal = self._generate_traditional_signal(row)
+        
+        # ML signal if available
+        ml_signal = None
+        if self.use_ml and 'ml_signal' in row and pd.notna(row['ml_signal']):
+            ml_signal = row['ml_signal']
+            ml_confidence = row.get('ml_confidence', 0.5)
+        else:
+            ml_confidence = 0.0
+        
+        # Combine signals
+        if ml_signal and ml_confidence > 0.6:
+            # High confidence ML signal
+            if ml_confidence > 0.8:
+                signal = ml_signal  # Trust ML completely
+            else:
+                # Combine ML and traditional
+                if ml_signal == traditional_signal:
+                    signal = ml_signal  # Agreement
+                else:
+                    signal = traditional_signal  # Fallback to traditional
+        else:
+            # Use traditional signal
+            signal = traditional_signal
+        
+        return signal
+    
+    def _generate_traditional_signal(self, row: pd.Series) -> str:
+        """Generate traditional technical analysis signal."""
+        signal = 'hold'
         
         close_price = row['close']
         ma_20 = row['ma_20']
@@ -367,15 +465,15 @@ class BacktestEngine:
             'total_pnl': portfolio_value - 100000.0,  # Starting cash
             'run_id': self.run_id
         }
-        self.equity_history.append(equity_record)
+        self.equity_curve.append(equity_record)
 
     def _generate_reports(self) -> None:
         """Generate backtest reports."""
         self.logger.info("Generating backtest reports")
 
         # Equity report
-        if self.equity_history:
-            equity_df = pd.DataFrame(self.equity_history)
+        if self.equity_curve:
+            equity_df = pd.DataFrame(self.equity_curve)
             equity_df.to_csv(self.reports_dir / "equity.csv", index=False)
             self.logger.info(f"Equity report saved to {self.reports_dir / 'equity.csv'}")
 
@@ -399,10 +497,10 @@ class BacktestEngine:
 
     def _calculate_metrics(self) -> dict[str, Any]:
         """Calculate performance metrics."""
-        if not self.equity_history:
+        if not self.equity_curve:
             return {}
 
-        equity_df = pd.DataFrame(self.equity_history)
+        equity_df = pd.DataFrame(self.equity_curve)
 
         # Basic metrics
         final_equity = equity_df['portfolio_value'].iloc[-1]
