@@ -11,6 +11,7 @@ Provides REST API for:
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from flask import Blueprint, jsonify, request
 
@@ -507,6 +508,200 @@ def get_backtest_status():
 
     except Exception as e:
         logger.error(f"Error getting backtest status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@backtest_router.route('/optimize', methods=['POST'])
+def optimize_strategy():
+    """Optimize strategy parameters using grid search."""
+    try:
+        data = request.get_json()
+        
+        # Required parameters
+        features_file = data.get('features_file')
+        if not features_file:
+            return jsonify({
+                'success': False,
+                'error': 'features_file is required'
+            }), 400
+
+        # Strategy parameters to optimize
+        param_ranges = data.get('param_ranges', {
+            'stop_loss_pct': [0.02, 0.03, 0.05, 0.08],
+            'take_profit_pct': [0.05, 0.08, 0.10, 0.15],
+            'max_position_size': [0.02, 0.03, 0.05, 0.08]
+        })
+        
+        # Other parameters
+        symbols = data.get('symbols', ['BTCUSDT'])
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        initial_capital = data.get('initial_capital', 100000)
+        commission_rate = data.get('commission_rate', 0.001)
+        slippage = data.get('slippage', 0.0005)
+        
+        logger.info("Starting strategy optimization")
+
+        # Load features data
+        df = pd.read_parquet(features_file)
+        
+        # Filter by date range
+        if start_date:
+            df = df[df['ts'] >= start_date]
+        if end_date:
+            df = df[df['ts'] <= end_date]
+
+        # Filter by symbols
+        if symbols:
+            df = df[df['symbol'].isin(symbols)]
+
+        if len(df) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'No data found for specified parameters'
+            }), 400
+
+        logger.info(f"Loaded {len(df)} rows for optimization")
+
+        # Generate parameter combinations
+        import itertools
+        param_names = list(param_ranges.keys())
+        param_values = list(param_ranges.values())
+        combinations = list(itertools.product(*param_values))
+        
+        logger.info(f"Testing {len(combinations)} parameter combinations")
+        
+        # Results storage
+        optimization_results = []
+        
+        # Test each combination
+        for i, combination in enumerate(combinations):
+            # Create parameter dict
+            params = dict(zip(param_names, combination))
+            
+            # Create backtest config
+            backtest_config = {
+                'costs': {
+                    'fee_rate': commission_rate,
+                    'slippage_bps': int(slippage * 10000)
+                },
+                'risk': {
+                    'max_position_size': params.get('max_position_size', 0.05),
+                    'max_portfolio_risk': 0.20,
+                    'stop_loss_pct': params.get('stop_loss_pct', 0.05),
+                    'take_profit_pct': params.get('take_profit_pct', 0.10)
+                },
+                'initial_capital': initial_capital
+            }
+            
+            # Create engine
+            engine = BacktestEngine(config=backtest_config)
+            
+            # Save data temporarily
+            temp_data_path = f"data/temp/optimization_{i}.parquet"
+            Path(temp_data_path).parent.mkdir(parents=True, exist_ok=True)
+            df.to_parquet(temp_data_path)
+            
+            # Run backtest
+            success = engine.run_backtest(
+                data_path=temp_data_path,
+                symbols=symbols if symbols else df['symbol'].unique().tolist(),
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            if success:
+                # Calculate metrics
+                final_equity = engine.equity_history[-1]['portfolio_value'] if engine.equity_history else initial_capital
+                total_return = (final_equity - initial_capital) / initial_capital
+                
+                # Calculate drawdown
+                if engine.equity_history:
+                    equity_df = pd.DataFrame(engine.equity_history)
+                    equity_df['cummax'] = equity_df['portfolio_value'].cummax()
+                    equity_df['drawdown'] = (equity_df['portfolio_value'] - equity_df['cummax']) / equity_df['cummax']
+                    max_drawdown = equity_df['drawdown'].min()
+                else:
+                    max_drawdown = 0
+                
+                # Calculate Sharpe ratio
+                if engine.equity_history and len(engine.equity_history) > 1:
+                    equity_df = pd.DataFrame(engine.equity_history)
+                    equity_df['returns'] = equity_df['portfolio_value'].pct_change().dropna()
+                    if equity_df['returns'].std() > 0:
+                        sharpe_ratio = equity_df['returns'].mean() / equity_df['returns'].std() * np.sqrt(1440)
+                    else:
+                        sharpe_ratio = 0
+                else:
+                    sharpe_ratio = 0
+                
+                # Store results
+                result = {
+                    'combination_id': i,
+                    'parameters': params,
+                    'performance': {
+                        'total_return': total_return,
+                        'total_return_pct': total_return * 100,
+                        'final_equity': final_equity,
+                        'max_drawdown': max_drawdown,
+                        'sharpe_ratio': sharpe_ratio,
+                        'total_trades': engine.total_trades,
+                        'win_rate': engine.winning_trades / engine.total_trades if engine.total_trades > 0 else 0,
+                        'total_pnl': engine.total_pnl
+                    }
+                }
+                
+                optimization_results.append(result)
+                
+                # Progress logging
+                if i % 10 == 0:
+                    logger.info(f"Completed {i}/{len(combinations)} combinations")
+            
+            # Clean up temp file
+            try:
+                Path(temp_data_path).unlink()
+            except:
+                pass
+        
+        # Sort results by total return (descending)
+        optimization_results.sort(key=lambda x: x['performance']['total_return'], reverse=True)
+        
+        # Find best parameters
+        best_result = optimization_results[0] if optimization_results else None
+        
+        # Generate optimization report
+        output_dir = Path('reports/optimization')
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        import json
+        from datetime import datetime
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        report_file = output_dir / f'optimization_report_{timestamp}.json'
+        
+        with open(report_file, 'w') as f:
+            json.dump({
+                'timestamp': timestamp,
+                'total_combinations': len(combinations),
+                'best_result': best_result,
+                'all_results': optimization_results,
+                'param_ranges': param_ranges
+            }, f, indent=2, default=str)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Strategy optimization completed. Tested {len(combinations)} combinations.',
+            'best_result': best_result,
+            'top_5_results': optimization_results[:5],
+            'report_file': str(report_file),
+            'total_combinations': len(combinations)
+        })
+        
+    except Exception as e:
+        logger.error(f"Strategy optimization failed: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

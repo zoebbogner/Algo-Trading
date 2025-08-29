@@ -1,0 +1,182 @@
+{
+  "timestamp": "20250829_152504",
+  "total_combinations": 8,
+  "best_result": {
+    "combination_id": 0,
+    "parameters": {
+      "stop_loss_pct": 0.03,
+      "take_profit_pct": 0.08,
+      "max_position_size": 0.03
+    },
+    "performance": {
+      "total_return": -0.0025816735792154213,
+      "total_return_pct": -0.2581673579215421,
+      "final_equity": 99741.83264207846,
+      "max_drawdown": -0.0035043395887965944,
+      "sharpe_ratio": -0.362152758109139,
+      "total_trades": 7,
+      "win_rate": 0.0,
+      "total_pnl": -291.0279146373734
+    }
+  },
+  "all_results": [
+    {
+      "combination_id": 0,
+      "parameters": {
+        "stop_loss_pct": 0.03,
+        "take_profit_pct": 0.08,
+        "max_position_size": 0.03
+      },
+      "performance": {
+        "total_return": -0.0025816735792154213,
+        "total_return_pct": -0.2581673579215421,
+        "final_equity": 99741.83264207846,
+        "max_drawdown": -0.0035043395887965944,
+        "sharpe_ratio": -0.362152758109139,
+        "total_trades": 7,
+        "win_rate": 0.0,
+        "total_pnl": -291.0279146373734
+      }
+    },
+    {
+      "combination_id": 2,
+      "parameters": {
+        "stop_loss_pct": 0.03,
+        "take_profit_pct": 0.1,
+        "max_position_size": 0.03
+      },
+      "performance": {
+        "total_return": -0.0025816735792154213,
+        "total_return_pct": -0.2581673579215421,
+        "final_equity": 99741.83264207846,
+        "max_drawdown": -0.0035043395887965944,
+        "sharpe_ratio": -0.362152758109139,
+        "total_trades": 7,
+        "win_rate": 0.0,
+        "total_pnl": -291.0279146373734
+      }
+    },
+    {
+      "combination_id": 4,
+      "parameters": {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.08,
+        "max_position_size": 0.03
+      },
+      "performance": {
+        "total_return": -0.0032056342904895428,
+        "total_return_pct": -0.3205634290489543,
+        "final_equity": 99679.43657095105,
+        "max_drawdown": -0.004085833628957917,
+        "sharpe_ratio": -0.44956313956479166,
+        "total_trades": 5,
+        "win_rate": 0.0,
+        "total_pnl": -315.8119999762722
+      }
+    },
+    {
+      "combination_id": 6,
+      "parameters": {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.1,
+        "max_position_size": 0.03
+      },
+      "performance": {
+        "total_return": -0.0032056342904895428,
+        "total_return_pct": -0.3205634290489543,
+        "final_equity": 99679.43657095105,
+        "max_drawdown": -0.004085833628957917,
+        "sharpe_ratio": -0.44956313956479166,
+        "total_trades": 5,
+        "win_rate": 0.0,
+        "total_pnl": -315.8119999762722
+      }
+    },
+    {
+      "combination_id": 1,
+      "parameters": {
+        "stop_loss_pct": 0.03,
+        "take_profit_pct": 0.08,
+        "max_position_size": 0.05
+      },
+      "performance": {
+        "total_return": -0.003441455527396465,
+        "total_return_pct": -0.3441455527396465,
+        "final_equity": 99655.85444726035,
+        "max_drawdown": -0.004669957129707684,
+        "sharpe_ratio": -0.36207723691117344,
+        "total_trades": 7,
+        "win_rate": 0.0,
+        "total_pnl": -387.90779027014133
+      }
+    },
+    {
+      "combination_id": 3,
+      "parameters": {
+        "stop_loss_pct": 0.03,
+        "take_profit_pct": 0.1,
+        "max_position_size": 0.05
+      },
+      "performance": {
+        "total_return": -0.003441455527396465,
+        "total_return_pct": -0.3441455527396465,
+        "final_equity": 99655.85444726035,
+        "max_drawdown": -0.004669957129707684,
+        "sharpe_ratio": -0.36207723691117344,
+        "total_trades": 7,
+        "win_rate": 0.0,
+        "total_pnl": -387.90779027014133
+      }
+    },
+    {
+      "combination_id": 5,
+      "parameters": {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.08,
+        "max_position_size": 0.05
+      },
+      "performance": {
+        "total_return": -0.004273044452108151,
+        "total_return_pct": -0.4273044452108151,
+        "final_equity": 99572.69555478918,
+        "max_drawdown": -0.005445381954054173,
+        "sharpe_ratio": -0.4494795349484117,
+        "total_trades": 5,
+        "win_rate": 0.0,
+        "total_pnl": -420.9695900730838
+      }
+    },
+    {
+      "combination_id": 7,
+      "parameters": {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.1,
+        "max_position_size": 0.05
+      },
+      "performance": {
+        "total_return": -0.004273044452108151,
+        "total_return_pct": -0.4273044452108151,
+        "final_equity": 99572.69555478918,
+        "max_drawdown": -0.005445381954054173,
+        "sharpe_ratio": -0.4494795349484117,
+        "total_trades": 5,
+        "win_rate": 0.0,
+        "total_pnl": -420.9695900730838
+      }
+    }
+  ],
+  "param_ranges": {
+    "stop_loss_pct": [
+      0.03,
+      0.05
+    ],
+    "take_profit_pct": [
+      0.08,
+      0.1
+    ],
+    "max_position_size": [
+      0.03,
+      0.05
+    ]
+  }
+}
