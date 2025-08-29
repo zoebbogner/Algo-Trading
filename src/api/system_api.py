@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import psutil
 from flask import Blueprint, jsonify, request
 
@@ -286,6 +288,166 @@ def get_dashboard_status():
 
     except Exception as e:
         logger.error(f"Error getting dashboard status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@system_router.route('/dashboard/performance', methods=['GET'])
+def performance_dashboard():
+    """Generate comprehensive performance dashboard."""
+    try:
+        # Get latest backtest results
+        backtest_dir = Path('reports/backtest')
+        if not backtest_dir.exists():
+            return jsonify({
+                'success': False,
+                'error': 'No backtest reports found'
+            }), 404
+        
+        # Find latest backtest
+        equity_files = list(backtest_dir.glob('equity_*.csv'))
+        if not equity_files:
+            return jsonify({
+                'success': False,
+                'error': 'No equity reports found'
+            }), 404
+        
+        # Get most recent backtest
+        latest_equity = max(equity_files, key=lambda x: x.stat().st_mtime)
+        run_id = latest_equity.stem.replace('equity_', '')
+        
+        # Load equity data
+        equity_df = pd.read_csv(latest_equity)
+        trades_file = backtest_dir / f'trades_{run_id}.csv'
+        
+        if trades_file.exists():
+            trades_df = pd.read_csv(trades_file)
+        else:
+            trades_df = pd.DataFrame()
+        
+        # Calculate performance metrics
+        if not equity_df.empty:
+            final_equity = equity_df['portfolio_value'].iloc[-1]
+            initial_equity = 100000.0
+            total_return = (final_equity - initial_equity) / initial_equity
+            
+            # Calculate drawdown
+            equity_df['cummax'] = equity_df['portfolio_value'].cummax()
+            equity_df['drawdown'] = (equity_df['portfolio_value'] - equity_df['cummax']) / equity_df['cummax']
+            max_drawdown = equity_df['drawdown'].min()
+            
+            # Calculate volatility
+            equity_df['returns'] = equity_df['portfolio_value'].pct_change().fillna(0)
+            volatility = equity_df['returns'].std() * np.sqrt(1440)  # Annualized
+            
+            # Sharpe ratio
+            if volatility > 0:
+                sharpe_ratio = equity_df['returns'].mean() / volatility * np.sqrt(1440)
+            else:
+                sharpe_ratio = 0
+        else:
+            total_return = 0
+            max_drawdown = 0
+            volatility = 0
+            sharpe_ratio = 0
+        
+        # Trading statistics
+        if not trades_df.empty:
+            total_trades = len(trades_df)
+            buy_trades = len(trades_df[trades_df['action'] == 'buy'])
+            sell_trades = len(trades_df[trades_df['action'] == 'sell'])
+            
+            # Calculate win rate
+            if 'trade_pnl' in trades_df.columns:
+                winning_trades = len(trades_df[trades_df['trade_pnl'] > 0])
+                losing_trades = len(trades_df[trades_df['trade_pnl'] < 0])
+                win_rate = winning_trades / total_trades if total_trades > 0 else 0
+                
+                # Average win/loss
+                avg_win = trades_df[trades_df['trade_pnl'] > 0]['trade_pnl'].mean() if winning_trades > 0 else 0
+                avg_loss = abs(trades_df[trades_df['trade_pnl'] < 0]['trade_pnl'].mean()) if losing_trades > 0 else 0
+                
+                # Profit factor
+                profit_factor = avg_win / avg_loss if avg_loss > 0 else 0
+            else:
+                winning_trades = 0
+                losing_trades = 0
+                win_rate = 0
+                avg_win = 0
+                avg_loss = 0
+                profit_factor = 0
+        else:
+            total_trades = 0
+            buy_trades = 0
+            sell_trades = 0
+            winning_trades = 0
+            losing_trades = 0
+            win_rate = 0
+            avg_win = 0
+            avg_loss = 0
+            profit_factor = 0
+        
+        # Portfolio composition
+        if not trades_df.empty and 'symbol' in trades_df.columns:
+            symbols_traded = trades_df['symbol'].unique().tolist()
+            current_positions = {}
+            
+            # Calculate current positions
+            for _, trade in trades_df.iterrows():
+                symbol = trade['symbol']
+                if trade['action'] == 'buy':
+                    if symbol not in current_positions:
+                        current_positions[symbol] = 0
+                    current_positions[symbol] += trade['quantity']
+                elif trade['action'] == 'sell':
+                    if symbol in current_positions:
+                        current_positions[symbol] -= trade['quantity']
+                        if current_positions[symbol] <= 0:
+                            del current_positions[symbol]
+        else:
+            symbols_traded = []
+            current_positions = {}
+        
+        # Generate dashboard data
+        dashboard_data = {
+            'run_id': run_id,
+            'performance': {
+                'total_return': total_return,
+                'total_return_pct': total_return * 100,
+                'final_equity': final_equity if not equity_df.empty else initial_equity,
+                'max_drawdown': max_drawdown,
+                'volatility': volatility,
+                'sharpe_ratio': sharpe_ratio
+            },
+            'trading': {
+                'total_trades': total_trades,
+                'buy_trades': buy_trades,
+                'sell_trades': sell_trades,
+                'winning_trades': winning_trades,
+                'losing_trades': losing_trades,
+                'win_rate': win_rate,
+                'avg_win': avg_win,
+                'avg_loss': avg_loss,
+                'profit_factor': profit_factor
+            },
+            'portfolio': {
+                'symbols_traded': symbols_traded,
+                'current_positions': current_positions,
+                'initial_capital': initial_equity
+            },
+            'equity_curve': equity_df.to_dict('records') if not equity_df.empty else [],
+            'trade_history': trades_df.to_dict('records') if not trades_df.empty else []
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': dashboard_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating performance dashboard: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
