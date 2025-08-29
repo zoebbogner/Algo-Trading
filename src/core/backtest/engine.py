@@ -147,15 +147,13 @@ class BacktestEngine:
                 if symbol in self.positions and self.positions[symbol] > 0:
                     continue
 
-                # Simple strategy: buy if price > 20-period MA, sell if < 20-period MA
-                if 'ma_20' in row and pd.notna(row['ma_20']):
-                    ma_20 = row['ma_20']
-
-                    if close_price > ma_20 * 1.01:  # Buy signal with 1% buffer
-                        self._execute_trade(symbol, 'buy', close_price, ts, row)
-                    elif close_price < ma_20 * 0.99:  # Sell signal with 1% buffer
-                        if symbol in self.positions and self.positions[symbol] > 0:
-                            self._execute_trade(symbol, 'sell', self.positions[symbol], close_price, ts, row)
+                # Enhanced strategy with multiple indicators
+                signal = self._generate_trading_signal(row)
+                
+                if signal == 'buy':
+                    self._execute_trade(symbol, 'buy', close_price, ts, row)
+                elif signal == 'sell' and symbol in self.positions and self.positions[symbol] > 0:
+                    self._execute_trade(symbol, 'sell', close_price, ts, row)
 
             # Record equity at each timestamp
             self._record_equity(ts, current_data)
@@ -163,6 +161,41 @@ class BacktestEngine:
             # Progress logging
             if i % 1000 == 0:
                 self.logger.info(f"Processed {i}/{len(timestamps)} timestamps")
+
+    def _generate_trading_signal(self, row: pd.Series) -> str:
+        """Generate trading signal using multiple technical indicators."""
+        signal = 'hold'
+        
+        # Check if we have basic indicators
+        if not all(indicator in row and pd.notna(row[indicator]) for indicator in ['ma_20', 'ma_50', 'rsi_14']):
+            return signal
+        
+        close_price = row['close']
+        ma_20 = row['ma_20']
+        ma_50 = row['ma_50']
+        rsi = row['rsi_14']
+        
+        # Buy conditions (2 out of 3 must be true)
+        buy_conditions = [
+            close_price > ma_20 * 1.01,  # Price above 20-period MA with buffer
+            ma_20 > ma_50,  # Short-term trend above long-term trend
+            rsi < 75  # Not severely overbought
+        ]
+        
+        # Sell conditions (2 out of 3 must be true)
+        sell_conditions = [
+            close_price < ma_20 * 0.99,  # Price below 20-period MA
+            ma_20 < ma_50,  # Short-term trend below long-term trend
+            rsi > 75  # Overbought
+        ]
+        
+        # Generate signal (more flexible)
+        if sum(buy_conditions) >= 2:
+            signal = 'buy'
+        elif sum(sell_conditions) >= 2:
+            signal = 'sell'
+        
+        return signal
 
     def _check_risk_management(self, current_data: pd.DataFrame) -> None:
         """Check and execute stop losses and take profits."""
