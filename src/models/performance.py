@@ -228,9 +228,10 @@ class BacktestResult:
 
 def calculate_performance_metrics(
     equity_curve: pd.DataFrame,
-    risk_free_rate: float = 0.02
+    risk_free_rate: float = 0.02,
+    trade_data: pd.DataFrame = None
 ) -> PerformanceMetrics:
-    """Calculate performance metrics from equity curve."""
+    """Calculate performance metrics from equity curve and trade data."""
     if equity_curve.empty:
         raise ValueError("Equity curve cannot be empty")
 
@@ -265,14 +266,50 @@ def calculate_performance_metrics(
     # Calmar ratio
     calmar_ratio = annualized_return / abs(max_drawdown) if max_drawdown != 0 else 0
 
-    # Trade metrics (placeholder - would need actual trade data)
-    win_rate = 0.5  # Placeholder
-    profit_factor = 1.0  # Placeholder
-    average_win = 0.0  # Placeholder
-    average_loss = 0.0  # Placeholder
-    total_trades = 0  # Placeholder
-    winning_trades = 0  # Placeholder
-    losing_trades = 0  # Placeholder
+    # Calculate trade metrics from actual trade data if available
+    if trade_data is not None and not trade_data.empty:
+        total_trades = len(trade_data)
+        
+        if 'trade_pnl' in trade_data.columns:
+            winning_trades = len(trade_data[trade_data['trade_pnl'] > 0])
+            losing_trades = len(trade_data[trade_data['trade_pnl'] < 0])
+            
+            win_rate = winning_trades / total_trades if total_trades > 0 else 0
+            
+            # Calculate average win/loss
+            if winning_trades > 0:
+                average_win = trade_data[trade_data['trade_pnl'] > 0]['trade_pnl'].mean()
+            else:
+                average_win = 0.0
+                
+            if losing_trades > 0:
+                average_loss = abs(trade_data[trade_data['trade_pnl'] < 0]['trade_pnl'].mean())
+            else:
+                average_loss = 0.0
+            
+            # Calculate profit factor
+            if average_loss > 0:
+                profit_factor = average_win / average_loss
+            else:
+                profit_factor = 0.0
+        else:
+            # No PnL data available
+            total_trades = 0
+            winning_trades = 0
+            losing_trades = 0
+            win_rate = 0.0
+            average_win = 0.0
+            average_loss = 0.0
+            profit_factor = 0.0
+    else:
+        # No trade data available, use defaults
+        total_trades = 0
+        winning_trades = 0
+        losing_trades = 0
+        win_rate = 0.0
+        average_win = 0.0
+        average_loss = 0.0
+        profit_factor = 0.0
 
     return PerformanceMetrics(
         total_return=total_return,

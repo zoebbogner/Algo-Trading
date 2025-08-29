@@ -713,14 +713,15 @@ class FeatureEngineer:
     def _compute_rolling_percentile(self, series: pd.Series, lookback: int, min_periods: int) -> pd.Series:
         """Compute rolling percentile rank."""
         def rolling_percentile(x):
-            if len(x) < min_periods:
-                return np.nan
-
+            """Calculate rolling percentile for a series."""
+            if len(x) < lookback:
+                return np.nan  # Return NaN for insufficient data
+            
             current_value = x.iloc[-1]
             historical_values = x.iloc[:-1]
 
             if len(historical_values) == 0:
-                return 0.5
+                return np.nan  # Return NaN instead of hardcoded 0.5
 
             percentile = (historical_values < current_value).mean()
             return percentile

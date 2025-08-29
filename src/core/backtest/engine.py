@@ -163,7 +163,7 @@ class BacktestEngine:
                 self.logger.info(f"Processed {i}/{len(timestamps)} timestamps")
 
     def _generate_trading_signal(self, row: pd.Series) -> str:
-        """Generate trading signal using multiple technical indicators."""
+        """Generate aggressive trading signals with multiple strategies for higher trade frequency."""
         signal = 'hold'
         
         # Check if we have basic indicators
@@ -175,24 +175,38 @@ class BacktestEngine:
         ma_50 = row['ma_50']
         rsi = row['rsi_14']
         
-        # Buy conditions (2 out of 3 must be true)
-        buy_conditions = [
-            close_price > ma_20 * 1.01,  # Price above 20-period MA with buffer
-            ma_20 > ma_50,  # Short-term trend above long-term trend
-            rsi < 75  # Not severely overbought
-        ]
+        # AGGRESSIVE STRATEGY 1: Quick momentum trades with tight thresholds
+        if close_price > ma_20 * 1.005:  # Very small move above MA
+            if rsi < 70:  # Not too overbought
+                signal = 'buy'
+        elif close_price < ma_20 * 0.995:  # Very small move below MA
+            if rsi > 30:  # Not too oversold
+                signal = 'sell'
         
-        # Sell conditions (2 out of 3 must be true)
-        sell_conditions = [
-            close_price < ma_20 * 0.99,  # Price below 20-period MA
-            ma_20 < ma_50,  # Short-term trend below long-term trend
-            rsi > 75  # Overbought
-        ]
-        
-        # Generate signal (more flexible)
-        if sum(buy_conditions) >= 2:
+        # AGGRESSIVE STRATEGY 2: RSI extremes for mean reversion
+        if rsi < 30:  # Oversold
             signal = 'buy'
-        elif sum(sell_conditions) >= 2:
+        elif rsi > 75:  # Overbought
+            signal = 'sell'
+        
+        # AGGRESSIVE STRATEGY 3: Trend following with minimal requirements
+        if ma_20 > ma_50:  # Any uptrend
+            if close_price > ma_20 * 1.003:  # Small buffer
+                signal = 'buy'
+        elif ma_20 < ma_50:  # Any downtrend
+            if close_price < ma_20 * 0.997:  # Small buffer
+                signal = 'sell'
+        
+        # AGGRESSIVE STRATEGY 4: Breakout plays
+        if close_price > ma_20 * 1.01:  # Strong move up
+            signal = 'buy'
+        elif close_price < ma_20 * 0.99:  # Strong move down
+            signal = 'sell'
+        
+        # AGGRESSIVE STRATEGY 5: RSI momentum shifts
+        if 35 <= rsi <= 45 and close_price > ma_20 * 0.999:  # RSI recovering
+            signal = 'buy'
+        elif 55 <= rsi <= 65 and close_price < ma_20 * 1.001:  # RSI weakening
             signal = 'sell'
         
         return signal
@@ -230,15 +244,17 @@ class BacktestEngine:
         
         # Calculate Kelly position size (simplified)
         # In a real implementation, this would use win rate and average win/loss
-        win_rate = 0.4  # Conservative estimate
-        avg_win = 0.05  # 5% average win
-        avg_loss = 0.03  # 3% average loss
+        win_rate = 0.45  # Increased from 0.4 to 0.45 for more aggressive sizing
+        avg_win = 0.06  # Increased from 0.05 to 0.06 for better win potential
+        avg_loss = 0.04  # Increased from 0.03 to 0.04 for larger positions
         
         if avg_loss > 0:
             kelly_fraction = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
+            # Apply aggressive multiplier to increase position sizes
+            kelly_fraction = kelly_fraction * 1.8  # Increased from 1.0 to 1.8
             kelly_fraction = max(0, min(kelly_fraction, self.max_position_size))  # Cap at max position size
         else:
-            kelly_fraction = self.max_position_size * 0.5  # Conservative fallback
+            kelly_fraction = self.max_position_size * 0.8  # Increased from 0.5 to 0.8
         
         # Calculate position size in currency
         position_value = portfolio_value * kelly_fraction
