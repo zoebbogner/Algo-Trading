@@ -23,7 +23,6 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
-
 # Global run ID for tracking operations
 _RUN_ID = None
 
@@ -84,12 +83,12 @@ class StructuredFormatter(logging.Formatter):
 
 class AuditLogger:
     """Audit logger for LLM-assisted decisions and critical operations."""
-    
+
     def __init__(self, audit_file: str = "logs/llm_audit.jsonl"):
         self.audit_file = Path(audit_file)
         self.audit_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    def log_llm_decision(self, 
+
+    def log_llm_decision(self,
                          decision_type: str,
                          input_data: dict,
                          output_data: dict,
@@ -107,11 +106,11 @@ class AuditLogger:
             'reasoning': reasoning,
             'metadata': metadata or {}
         }
-        
+
         # Write to audit file
         with open(self.audit_file, 'a') as f:
             f.write(json.dumps(audit_entry) + '\n')
-    
+
     def log_trading_decision(self,
                             symbol: str,
                             action: str,
@@ -134,7 +133,7 @@ class AuditLogger:
             'model_output': model_output,
             'metadata': metadata or {}
         }
-        
+
         # Write to audit file
         with open(self.audit_file, 'a') as f:
             f.write(json.dumps(audit_entry) + '\n')

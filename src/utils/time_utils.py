@@ -1,20 +1,23 @@
+#!/usr/bin/env python3
 """
-Time utility functions for the crypto algorithmic trading system.
+Time utilities for the crypto historical data collection system.
 
-Provides time-related operations:
-- Timestamp parsing and formatting
-- Timezone handling
+This module provides:
+- Timestamp parsing and conversion
+- Timezone handling (UTC-first approach)
+- Market hours detection
 - Time range calculations
-- Market hours and trading sessions
 """
 
-import logging
 import re
 from datetime import UTC, datetime, timedelta
 
 import pytz
 
-logger = logging.getLogger(__name__)
+from src.utils.logging import get_logger
+
+# Get logger for this module
+logger = get_logger(__name__)
 
 
 class TimeUtilsError(Exception):

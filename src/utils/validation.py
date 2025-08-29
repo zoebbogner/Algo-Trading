@@ -1,21 +1,24 @@
+#!/usr/bin/env python3
 """
-Data validation utilities for the crypto algorithmic trading system.
+Data validation utilities for the crypto historical data collection system.
 
-Provides validation functions for:
-- DataFrame structure and content
-- Timestamp validation and alignment
-- Data quality checks
-- Schema validation
+This module provides comprehensive data validation functions for:
+- DataFrame structure validation
+- Timestamp validation
+- OHLCV data validation
+- Schema compliance checking
 """
 
-import logging
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from src.utils.logging import get_logger
+
+# Get logger for this module
+logger = get_logger(__name__)
 
 
 class ValidationError(Exception):
@@ -177,7 +180,7 @@ class DataValidator:
                 results['warnings'].append(warning_msg)
 
         # Check for future timestamps
-        now = datetime.now(UTC)
+        now = datetime.now(pd.Timestamp.utcnow().tz)
         future_timestamps = ts_series[ts_series > now]
         if len(future_timestamps) > 0:
             warning_msg = f"Found {len(future_timestamps)} future timestamps"

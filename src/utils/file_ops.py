@@ -1,16 +1,16 @@
+#!/usr/bin/env python3
 """
-File operation utilities for the crypto algorithmic trading system.
+File operation utilities for the crypto historical data collection system.
 
-Provides safe and efficient file operations:
-- Directory creation and management
-- Safe file saving with atomic operations
-- File validation and integrity checks
+This module provides:
+- Safe atomic file operations
+- Directory management
+- File integrity checks
 - Backup and recovery operations
 """
 
 import hashlib
 import json
-import logging
 import pickle
 import shutil
 import tempfile
@@ -21,7 +21,10 @@ from typing import Any
 import pandas as pd
 import yaml
 
-logger = logging.getLogger(__name__)
+from src.utils.logging import get_logger
+
+# Get logger for this module
+logger = get_logger(__name__)
 
 
 class FileOperationError(Exception):

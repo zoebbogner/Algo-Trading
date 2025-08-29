@@ -1,0 +1,13 @@
+{
+  "total_rows": 100805,
+  "total_features": 55,
+  "date_range": "2017-07-03 00:00:00+00:00 to 2025-08-22 08:57:00+00:00",
+  "symbols": 10,
+  "high_correlation_pairs": 104,
+  "nan_percentage": 2.184794224673199,
+  "output_files": [
+    "reports/features/feature_statistics.csv",
+    "reports/features/feature_correlations.csv",
+    "reports/features/feature_variance.csv"
+  ]
+}

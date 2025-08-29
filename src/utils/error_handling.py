@@ -1,23 +1,26 @@
+#!/usr/bin/env python3
 """
-Error handling utilities for the crypto algorithmic trading system.
+Error handling utilities for the crypto historical data collection system.
 
-Provides robust error handling with:
-- Exception wrapping and context
+This module provides:
+- Custom exception hierarchy
 - Retry mechanisms with exponential backoff
-- Error classification and reporting
-- Graceful degradation
+- Error context enrichment
+- Error tracking and monitoring
 """
 
-import functools
-import logging
 import sys
 import time
 import traceback
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from functools import wraps
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from src.utils.logging import get_logger
+
+# Get logger for this module
+logger = get_logger(__name__)
 
 
 class SystemError(Exception):
@@ -81,7 +84,7 @@ def handle_exception(
         error_types = [error_types]
 
     def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
+        @wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
@@ -146,7 +149,7 @@ def retry_on_failure(
         error_types = [error_types]
 
     def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
+        @wraps(func)
         def wrapper(*args, **kwargs):
             last_exception = None
 

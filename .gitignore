@@ -46,6 +46,7 @@ venv.bak/
 *.swp
 *.swo
 *~
+cspell.json
 
 # OS
 .DS_Store
@@ -81,3 +82,4 @@ state/
 # Sample data (keep small samples for testing)
 !data/raw/binance/*/1m/*.sample.csv
 !data/processed/*.sample.parquet
+!src/data/
