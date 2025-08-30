@@ -22,7 +22,7 @@ class TradingKnowledgeRAG:
         self.knowledge_file = self.knowledge_dir / "trading_knowledge.json"
         
     def extract_trading_insights(self, backtest_results: Dict) -> Dict:
-        """Extract concise trading insights from backtest results."""
+        """Extract comprehensive trading insights from real backtest data."""
         try:
             insights = {
                 'timestamp': datetime.now().isoformat(),
@@ -31,10 +31,12 @@ class TradingKnowledgeRAG:
                 'risk_insights': {},
                 'actionable_lessons': [],
                 'recent_trades': [],
-                'trade_patterns': {}
+                'trade_patterns': {},
+                'portfolio_analysis': {},
+                'execution_quality': {}
             }
             
-            # Extract performance metrics
+            # Extract performance metrics from real data
             win_loss = backtest_results.get('win_loss_summary', {})
             if win_loss:
                 total_trades = win_loss.get('total_trades', 0)
@@ -53,49 +55,31 @@ class TradingKnowledgeRAG:
                         'open_positions': open_trades
                     }
                     
-                    # Extract recent trade details from backtest results
-                    if 'recent_performance_html' in backtest_results:
-                        recent_performance = backtest_results.get('recent_performance_html', '')
-                        if recent_performance:
-                            # Parse recent trades from the HTML content
-                            trade_details = self._extract_trade_details(recent_performance)
-                            insights['recent_trades'] = trade_details[:5]  # Keep last 5 trades
-                            
-                            # Analyze trade patterns
-                            insights['trade_patterns'] = self._analyze_trade_patterns(trade_details)
-                    
-                    # Also extract from individual backtest files if available
+                    # Extract comprehensive trade details from real backtest files
                     if 'all_backtests' in backtest_results:
                         all_backtests = backtest_results.get('all_backtests', [])
-                        if all_backtests and not insights['recent_trades']:
-                            # Extract from individual backtest files
-                            trade_details = self._extract_from_backtest_files(all_backtests)
-                            insights['recent_trades'] = trade_details[:5]
-                            insights['trade_patterns'] = self._analyze_trade_patterns(trade_details)
+                        if all_backtests:
+                            # Extract detailed trade data from actual files
+                            detailed_trades = self._extract_comprehensive_trade_data(all_backtests)
+                            insights['recent_trades'] = detailed_trades[:5]  # Keep last 5 trades
+                            
+                            # Analyze real trade patterns
+                            insights['trade_patterns'] = self._analyze_real_trade_patterns(detailed_trades)
+                            
+                            # Extract portfolio analysis from real equity data
+                            insights['portfolio_analysis'] = self._extract_portfolio_analysis(all_backtests)
+                            
+                            # Extract execution quality metrics
+                            insights['execution_quality'] = self._extract_execution_quality(all_backtests)
                     
-                    # Key patterns
-                    if hit_rate < 0.3:
-                        insights['key_patterns'].append("Low win rate suggests strategy needs refinement")
-                    elif hit_rate > 0.6:
-                        insights['key_patterns'].append("High win rate indicates strong strategy execution")
+                    # Generate insights based on real data patterns
+                    insights['key_patterns'] = self._generate_real_patterns(hit_rate, open_trades, total_trades, insights)
                     
-                    if open_trades > total_trades * 0.5:
-                        insights['key_patterns'].append("High open position ratio - consider position management")
+                    # Risk insights based on actual performance
+                    insights['risk_insights'] = self._generate_real_risk_insights(hit_rate, open_trades, total_trades, insights)
                     
-                    # Risk insights
-                    insights['risk_insights'] = {
-                        'position_management': "Open positions represent unrealized risk",
-                        'win_rate_quality': f"Current hit rate: {hit_rate:.1%}",
-                        'portfolio_exposure': f"Active exposure: {open_trades} positions"
-                    }
-                    
-                    # Actionable lessons
-                    if hit_rate < 0.4:
-                        insights['actionable_lessons'].append("Review entry criteria and risk management")
-                    if open_trades > 0:
-                        insights['actionable_lessons'].append("Monitor open positions for exit opportunities")
-                    if total_trades > 100:
-                        insights['actionable_lessons'].append("Sufficient data for strategy validation")
+                    # Actionable lessons based on real data
+                    insights['actionable_lessons'] = self._generate_real_lessons(hit_rate, open_trades, total_trades, insights)
             
             return insights
             
@@ -211,6 +195,394 @@ class TradingKnowledgeRAG:
             logger.error(f"Error analyzing trade patterns: {e}")
             return {}
     
+    def _extract_comprehensive_trade_data(self, all_backtests: List) -> List[Dict]:
+        """Extract comprehensive trade data from actual backtest files."""
+        try:
+            trades = []
+            
+            for file_path in all_backtests[:5]:  # Process first 5 files
+                try:
+                    if not str(file_path).endswith('metrics.json'):
+                        continue
+                        
+                    with open(file_path, 'r') as f:
+                        metrics_data = json.load(f)
+                    
+                    # Extract real metrics data
+                    run_id = metrics_data.get('run_id', 'Unknown')
+                    total_return_pct = metrics_data.get('total_return_pct', 0)
+                    sharpe_ratio = metrics_data.get('sharpe_ratio', 0)
+                    total_trades = metrics_data.get('total_trades', 0)
+                    winning_trades = metrics_data.get('winning_trades', 0)
+                    losing_trades = metrics_data.get('losing_trades', 0)
+                    hit_rate = metrics_data.get('hit_rate', 0)
+                    max_drawdown = metrics_data.get('max_drawdown', 0)
+                    initial_equity = metrics_data.get('initial_equity', 0)
+                    final_equity = metrics_data.get('final_equity', 0)
+                    
+                    # Calculate real P&L
+                    total_pnl = float(final_equity - initial_equity)
+                    pnl_pct = float((total_pnl / initial_equity) * 100 if initial_equity > 0 else 0)
+                    
+                    # Get final positions (real open positions)
+                    final_positions = metrics_data.get('final_positions', {})
+                    open_positions_count = len(final_positions)
+                    
+                    # Extract symbol from run directory name or use first position
+                    symbol = list(final_positions.keys())[0] if final_positions else 'Unknown'
+                    
+                    trades.append({
+                        'run_id': str(run_id),
+                        'symbol': str(symbol),
+                        'total_return': f"{float(total_return_pct):.2f}%",
+                        'sharpe_ratio': f"{float(sharpe_ratio):.3f}",
+                        'hit_rate': f"{float(hit_rate):.1%}",
+                        'total_trades': int(total_trades),
+                        'winning_trades': int(winning_trades),
+                        'losing_trades': int(losing_trades),
+                        'max_drawdown': f"{float(max_drawdown):.2%}",
+                        'total_pnl': f"${total_pnl:,.2f}",
+                        'pnl_pct': f"{pnl_pct:.2f}%",
+                        'open_positions': int(open_positions_count),
+                        'initial_equity': f"${float(initial_equity):,.2f}",
+                        'final_equity': f"${float(final_equity):,.2f}",
+                        'status': 'open' if open_positions_count > 0 else 'closed'
+                    })
+                
+                except Exception as e:
+                    logger.warning(f"Error processing backtest file {file_path}: {e}")
+                    continue
+            
+            return trades
+            
+        except Exception as e:
+            logger.error(f"Error extracting comprehensive trade data: {e}")
+            return []
+    
+    def _analyze_real_trade_patterns(self, trades: List[Dict]) -> Dict:
+        """Analyze patterns in real trade data."""
+        try:
+            if not trades:
+                return {}
+            
+            patterns = {
+                'best_performing_run': '',
+                'worst_performing_run': '',
+                'avg_sharpe': 0.0,
+                'avg_drawdown': 0.0,
+                'total_pnl': 0.0,
+                'risk_level': 'medium',
+                'position_management': 'unknown'
+            }
+            
+            # Analyze performance patterns
+            returns = []
+            sharpe_values = []
+            drawdown_values = []
+            total_pnl_sum = 0.0
+            
+            for trade in trades:
+                # Extract numeric values
+                try:
+                    return_pct = float(trade.get('total_return', '0%').rstrip('%'))
+                    returns.append(return_pct)
+                except:
+                    pass
+                
+                try:
+                    sharpe = float(trade.get('sharpe_ratio', '0'))
+                    sharpe_values.append(sharpe)
+                except:
+                    pass
+                
+                try:
+                    drawdown = float(trade.get('max_drawdown', '0%').rstrip('%'))
+                    drawdown_values.append(drawdown)
+                except:
+                    pass
+                
+                try:
+                    pnl = float(trade.get('pnl_pct', '0%').rstrip('%'))
+                    total_pnl_sum += pnl
+                except:
+                    pass
+            
+            # Find best/worst performing runs
+            if returns:
+                best_index = returns.index(max(returns))
+                worst_index = returns.index(min(returns))
+                patterns['best_performing_run'] = trades[best_index].get('run_id', 'Unknown')[:8]
+                patterns['worst_performing_run'] = trades[worst_index].get('run_id', 'Unknown')[:8]
+            
+            # Calculate averages
+            if sharpe_values:
+                patterns['avg_sharpe'] = float(round(sum(sharpe_values) / len(sharpe_values), 3))
+            
+            if drawdown_values:
+                patterns['avg_drawdown'] = float(round(sum(drawdown_values) / len(drawdown_values), 2))
+            
+            patterns['total_pnl'] = float(round(total_pnl_sum, 2))
+            
+            # Determine risk level based on real Sharpe ratios
+            if patterns['avg_sharpe'] > 1.0:
+                patterns['risk_level'] = 'low'
+            elif patterns['avg_sharpe'] < 0.5:
+                patterns['risk_level'] = 'high'
+            
+            # Analyze position management
+            open_positions = [t for t in trades if t.get('status') == 'open']
+            if open_positions:
+                patterns['position_management'] = f"{len(open_positions)} open positions"
+            else:
+                patterns['position_management'] = 'all positions closed'
+            
+            return patterns
+            
+        except Exception as e:
+            logger.error(f"Error analyzing real trade patterns: {e}")
+            return {}
+    
+    def _extract_portfolio_analysis(self, all_backtests: List) -> Dict:
+        """Extract portfolio analysis from real equity data."""
+        try:
+            portfolio_data = {
+                'total_runs': len(all_backtests),
+                'equity_evolution': [],
+                'risk_metrics': {},
+                'position_concentration': {}
+            }
+            
+            total_initial_equity = 0
+            total_final_equity = 0
+            all_positions = {}
+            
+            for file_path in all_backtests[:3]:  # Analyze first 3 runs
+                try:
+                    if not str(file_path).endswith('metrics.json'):
+                        continue
+                        
+                    with open(file_path, 'r') as f:
+                        metrics = json.load(f)
+                    
+                    initial_equity = metrics.get('initial_equity', 0)
+                    final_equity = metrics.get('final_equity', 0)
+                    final_positions = metrics.get('final_positions', {})
+                    
+                    total_initial_equity += initial_equity
+                    total_final_equity += final_equity
+                    
+                    # Track position concentration
+                    for symbol, quantity in final_positions.items():
+                        if symbol not in all_positions:
+                            all_positions[symbol] = 0
+                        all_positions[symbol] += quantity
+                    
+                    # Extract equity evolution if available
+                    equity_file = file_path.parent / 'equity.csv'
+                    if equity_file.exists():
+                        try:
+                            import pandas as pd
+                            df = pd.read_csv(equity_file)
+                            if not df.empty:
+                                portfolio_data['equity_evolution'].append({
+                                    'run_id': metrics.get('run_id', 'Unknown')[:8],
+                                    'max_value': df['portfolio_value'].max(),
+                                    'min_value': df['portfolio_value'].min(),
+                                    'volatility': df['portfolio_value'].std()
+                                })
+                        except Exception as e:
+                            logger.warning(f"Could not read equity data: {e}")
+                
+                except Exception as e:
+                    logger.warning(f"Error processing portfolio data: {e}")
+                    continue
+            
+            # Calculate portfolio metrics
+            if total_initial_equity > 0:
+                portfolio_data['risk_metrics'] = {
+                    'total_return': f"{((total_final_equity - total_initial_equity) / total_initial_equity) * 100:.2f}%",
+                    'total_equity_change': f"${total_final_equity - total_initial_equity:,.2f}",
+                    'equity_efficiency': f"{total_final_equity / total_initial_equity:.2f}"
+                }
+            
+            # Ensure all numeric values are JSON serializable
+            for key, value in portfolio_data.items():
+                if isinstance(value, (int, float)):
+                    portfolio_data[key] = float(value)
+            
+            # Position concentration analysis
+            if all_positions:
+                portfolio_data['position_concentration'] = {
+                    'total_symbols': len(all_positions),
+                    'most_held': max(all_positions.items(), key=lambda x: x[1])[0] if all_positions else 'None',
+                    'symbols': list(all_positions.keys())
+                }
+            
+            return portfolio_data
+            
+        except Exception as e:
+            logger.error(f"Error extracting portfolio analysis: {e}")
+            return {}
+    
+    def _extract_execution_quality(self, all_backtests: List) -> Dict:
+        """Extract execution quality metrics from real trade data."""
+        try:
+            execution_data = {
+                'trade_execution': {},
+                'timing_analysis': {},
+                'cost_analysis': {}
+            }
+            
+            total_execution_slippage = 0
+            total_fees = 0
+            trade_timing = []
+            
+            for file_path in all_backtests[:3]:  # Analyze first 3 runs
+                try:
+                    if not str(file_path).endswith('metrics.json'):
+                        continue
+                    
+                    # Check for trades.csv file
+                    trades_file = file_path.parent / 'trades.csv'
+                    if trades_file.exists():
+                        try:
+                            import pandas as pd
+                            df = pd.read_csv(trades_file)
+                            
+                            if not df.empty:
+                                # Analyze execution quality
+                                for _, trade in df.iterrows():
+                                    # Calculate execution slippage
+                                    if 'price' in trade and 'execution_price' in trade:
+                                        slippage = abs(trade['execution_price'] - trade['price']) / trade['price']
+                                        total_execution_slippage += slippage
+                                    
+                                    # Track fees
+                                    if 'fees' in trade:
+                                        total_fees += trade['fees']
+                                    
+                                    # Track timing
+                                    if 'timestamp' in trade:
+                                        trade_timing.append(pd.to_datetime(trade['timestamp']))
+                        
+                        except Exception as e:
+                            logger.warning(f"Could not read trades data: {e}")
+                
+                except Exception as e:
+                    logger.warning(f"Error processing execution data: {e}")
+                    continue
+            
+            # Calculate execution metrics
+            if total_execution_slippage > 0:
+                execution_data['trade_execution'] = {
+                    'avg_slippage': f"{total_execution_slippage:.4f}",
+                    'total_fees': f"${total_fees:.2f}",
+                    'execution_quality': 'high' if total_execution_slippage < 0.001 else 'medium' if total_execution_slippage < 0.005 else 'low'
+                }
+            
+            # Timing analysis
+            if trade_timing:
+                try:
+                    import pandas as pd
+                    timing_df = pd.DataFrame({'timestamp': trade_timing})
+                    timing_df['hour'] = timing_df['timestamp'].dt.hour
+                    
+                    execution_data['timing_analysis'] = {
+                        'total_trades': len(trade_timing),
+                        'peak_hour': timing_df['hour'].mode().iloc[0] if not timing_df.empty else 'Unknown',
+                        'trading_hours': f"{timing_df['hour'].min()}-{timing_df['hour'].max()}"
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not analyze timing: {e}")
+            
+            return execution_data
+            
+        except Exception as e:
+            logger.error(f"Error extracting execution quality: {e}")
+            return {}
+    
+    def _generate_real_patterns(self, hit_rate: float, open_trades: int, total_trades: int, insights: Dict) -> List[str]:
+        """Generate patterns based on real data analysis."""
+        patterns = []
+        
+        # Performance patterns
+        if hit_rate < 0.2:
+            patterns.append("Critical: Extremely low win rate indicates fundamental strategy failure")
+        elif hit_rate < 0.4:
+            patterns.append("Low win rate suggests strategy needs immediate refinement")
+        elif hit_rate > 0.6:
+            patterns.append("Strong win rate indicates effective strategy execution")
+        
+        # Position management patterns
+        if open_trades > total_trades * 0.7:
+            patterns.append("High open position ratio suggests poor exit strategy or over-trading")
+        elif open_trades > total_trades * 0.5:
+            patterns.append("Moderate open position ratio indicates room for improvement in position management")
+        
+        # Portfolio patterns
+        if insights.get('portfolio_analysis', {}).get('position_concentration', {}).get('total_symbols', 0) > 10:
+            patterns.append("High symbol diversification may indicate lack of focus")
+        elif insights.get('portfolio_analysis', {}).get('position_concentration', {}).get('total_symbols', 0) < 3:
+            patterns.append("Low symbol diversification increases concentration risk")
+        
+        return patterns
+    
+    def _generate_real_risk_insights(self, hit_rate: float, open_trades: int, total_trades: int, insights: Dict) -> Dict:
+        """Generate risk insights based on real performance data."""
+        risk_insights = {}
+        
+        # Position management risk
+        if open_trades > 0:
+            open_ratio = open_trades / total_trades
+            risk_insights['position_management'] = f"Open positions represent {open_ratio:.1%} of portfolio risk"
+            risk_insights['unrealized_risk'] = f"Active exposure: {open_trades} positions with unrealized P&L"
+        else:
+            risk_insights['position_management'] = "All positions closed - no unrealized risk"
+        
+        # Performance risk
+        risk_insights['win_rate_quality'] = f"Current hit rate: {hit_rate:.1%} - {'Critical' if hit_rate < 0.2 else 'High' if hit_rate < 0.4 else 'Moderate' if hit_rate < 0.6 else 'Low'} risk"
+        
+        # Portfolio risk
+        portfolio_data = insights.get('portfolio_analysis', {})
+        if portfolio_data.get('risk_metrics'):
+            risk_insights['portfolio_risk'] = f"Portfolio return: {portfolio_data['risk_metrics'].get('total_return', 'Unknown')}"
+        
+        return risk_insights
+    
+    def _generate_real_lessons(self, hit_rate: float, open_trades: int, total_trades: int, insights: Dict) -> List[str]:
+        """Generate actionable lessons based on real data analysis."""
+        lessons = []
+        
+        # Performance lessons
+        if hit_rate < 0.3:
+            lessons.append("Immediate action required: Review and revise entry/exit criteria")
+        elif hit_rate < 0.5:
+            lessons.append("Strategy refinement needed: Analyze losing trades for common patterns")
+        
+        # Position management lessons
+        if open_trades > total_trades * 0.5:
+            lessons.append("Implement strict position management: Set stop-loss and take-profit levels")
+        
+        # Portfolio lessons
+        portfolio_data = insights.get('portfolio_analysis', {})
+        if portfolio_data.get('position_concentration', {}).get('total_symbols', 0) > 8:
+            lessons.append("Consider reducing symbol count for better focus and management")
+        
+        # Execution lessons
+        execution_data = insights.get('execution_quality', {})
+        if execution_data.get('trade_execution', {}).get('execution_quality') == 'low':
+            lessons.append("Improve execution quality: Review slippage and timing strategies")
+        
+        # Data quality lessons
+        if total_trades > 50:
+            lessons.append("Sufficient data for statistical analysis - patterns are reliable")
+        elif total_trades > 20:
+            lessons.append("Moderate data for analysis - continue collecting for better insights")
+        else:
+            lessons.append("Limited data available - continue trading for better pattern recognition")
+        
+        return lessons
+    
     def _extract_from_backtest_files(self, all_backtests: List) -> List[Dict]:
         """Extract trade details from individual backtest files."""
         try:
@@ -267,9 +639,24 @@ class TradingKnowledgeRAG:
             existing_knowledge['last_updated'] = datetime.now().isoformat()
             existing_knowledge['total_insights'] = len(existing_knowledge['insights'])
             
+            # Ensure all values are JSON serializable
+            def make_json_serializable(obj):
+                if isinstance(obj, dict):
+                    return {k: make_json_serializable(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [make_json_serializable(item) for item in obj]
+                elif isinstance(obj, (int, float)):
+                    return float(obj)
+                elif isinstance(obj, (str, bool, type(None))):
+                    return obj
+                else:
+                    return str(obj)
+            
+            serializable_knowledge = make_json_serializable(existing_knowledge)
+            
             # Save to file
             with open(self.knowledge_file, 'w') as f:
-                json.dump(existing_knowledge, f, indent=2)
+                json.dump(serializable_knowledge, f, indent=2)
             
             logger.info(f"Saved trading knowledge: {len(insights)} insights")
             return True
@@ -295,7 +682,7 @@ class TradingKnowledgeRAG:
         }
     
     def get_relevant_context(self, query: str, max_insights: int = 5) -> str:
-        """Get relevant trading context for GPT prompts (concise format)."""
+        """Get relevant trading context for GPT prompts with comprehensive real data."""
         try:
             knowledge = self.load_knowledge()
             if not knowledge['insights']:
@@ -317,27 +704,55 @@ class TradingKnowledgeRAG:
                         f"{perf.get('open_positions', 0)} open positions"
                     )
             
-            # Add recent trade details
+            # Add comprehensive trade details
             if latest.get('recent_trades'):
                 trades_summary = []
                 for trade in latest['recent_trades'][:3]:  # Show last 3 trades
                     symbol = trade.get('symbol', 'Unknown')
                     total_return = trade.get('total_return', '0%')
                     sharpe = trade.get('sharpe_ratio', '0')
-                    trades_summary.append(f"{symbol}: {total_return} return, {sharpe} Sharpe")
+                    pnl = trade.get('total_pnl', 'N/A')
+                    trades_summary.append(f"{symbol}: {total_return} return, {sharpe} Sharpe, {pnl} P&L")
                 
                 if trades_summary:
                     context_parts.append(f"Recent Trades: {'; '.join(trades_summary)}")
             
-            # Add trade patterns
+            # Add enhanced trade patterns
             if latest.get('trade_patterns'):
                 patterns = latest['trade_patterns']
-                if patterns.get('best_performing_symbol') and patterns.get('worst_performing_symbol'):
-                    context_parts.append(
-                        f"Trade Patterns: Best {patterns['best_performing_symbol']}, "
-                        f"Worst {patterns['worst_performing_symbol']}, "
-                        f"Risk: {patterns.get('risk_level', 'medium')}"
-                    )
+                pattern_summary = []
+                
+                if patterns.get('best_performing_run') and patterns.get('worst_performing_run'):
+                    pattern_summary.append(f"Best: {patterns['best_performing_run']}, Worst: {patterns['worst_performing_run']}")
+                
+                if patterns.get('avg_sharpe'):
+                    pattern_summary.append(f"Avg Sharpe: {patterns['avg_sharpe']}")
+                
+                if patterns.get('risk_level'):
+                    pattern_summary.append(f"Risk: {patterns['risk_level']}")
+                
+                if pattern_summary:
+                    context_parts.append(f"Trade Patterns: {'; '.join(pattern_summary)}")
+            
+            # Add portfolio analysis
+            if latest.get('portfolio_analysis'):
+                portfolio = latest['portfolio_analysis']
+                portfolio_summary = []
+                
+                if portfolio.get('risk_metrics', {}).get('total_return'):
+                    portfolio_summary.append(f"Portfolio: {portfolio['risk_metrics']['total_return']}")
+                
+                if portfolio.get('position_concentration', {}).get('total_symbols'):
+                    portfolio_summary.append(f"Symbols: {portfolio['position_concentration']['total_symbols']}")
+                
+                if portfolio_summary:
+                    context_parts.append(f"Portfolio: {'; '.join(portfolio_summary)}")
+            
+            # Add execution quality
+            if latest.get('execution_quality'):
+                execution = latest['execution_quality']
+                if execution.get('trade_execution', {}).get('execution_quality'):
+                    context_parts.append(f"Execution: {execution['trade_execution']['execution_quality']} quality")
             
             # Add key patterns (most important)
             patterns = []

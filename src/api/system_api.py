@@ -1340,7 +1340,8 @@ def get_backtest_results() -> dict:
                 'total_runs': len(all_backtests),
                 'recent_runs': min(5, len(all_backtests)),
                 'recent_performance_html': recent_performance_html,
-                'win_loss_summary': win_loss_summary
+                'win_loss_summary': win_loss_summary,
+                'all_backtests': all_backtests  # Include the actual file paths for RAG system
             }
         else:
             return {
