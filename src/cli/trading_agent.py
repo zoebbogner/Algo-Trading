@@ -23,6 +23,7 @@ except Exception as e:
 
 from src.utils.logging import setup_logging, get_logger
 from src.llm import get_llm_client
+from src.llm.rag_trading_knowledge import TradingKnowledgeRAG, create_trading_prompt_with_context
 
 logger = get_logger(__name__)
 
@@ -56,13 +57,19 @@ def analyze(symbol: str, timeframe: str, temperature: float, max_tokens: int, ti
         market_data = _get_market_data(symbol, timeframe)
         logger.info("✅ Market data collected")
         
-        # Generate analysis prompt
-        logger.info("📝 Creating analysis prompt...")
-        prompt = _create_optimized_prompt(symbol, timeframe, market_data)
-        logger.info(f"✅ Analysis prompt created ({len(prompt)} characters)")
+        # Initialize RAG system for trading knowledge
+        logger.info("🧠 Initializing RAG system for trading knowledge...")
+        rag_system = TradingKnowledgeRAG()
+        logger.info("✅ RAG system initialized")
+        
+        # Generate analysis prompt with RAG context
+        logger.info("📝 Creating analysis prompt with trading context...")
+        base_prompt = _create_optimized_prompt(symbol, timeframe, market_data)
+        prompt = create_trading_prompt_with_context(base_prompt, rag_system, include_performance=True)
+        logger.info(f"✅ Enhanced prompt created with RAG context ({len(prompt)} characters)")
         
         # Generate LLM analysis with timeout
-        logger.info("🤖 Generating LLM analysis...")
+        logger.info("🤖 Generating LLM analysis with trading knowledge...")
         result = _generate_analysis_with_timeout(client, prompt, timeout, max_tokens)
         logger.info("✅ LLM analysis generated")
         
@@ -76,6 +83,18 @@ def analyze(symbol: str, timeframe: str, temperature: float, max_tokens: int, ti
         # Save results
         logger.info("💾 Saving analysis results...")
         _save_analysis_results(analysis, symbol, timeframe)
+        
+        # Extract and save trading insights for future learning
+        logger.info("🧠 Extracting trading insights for knowledge base...")
+        try:
+            # Get backtest results for insights
+            from src.api.system_api import get_backtest_results
+            backtest_results = get_backtest_results()
+            insights = rag_system.extract_trading_insights(backtest_results)
+            rag_system.save_knowledge(insights)
+            logger.info("✅ Trading insights saved to knowledge base")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not save trading insights: {e}")
         
         logger.info("🎉 Trading analysis completed successfully!")
         
@@ -98,39 +117,87 @@ def analyze(symbol: str, timeframe: str, temperature: float, max_tokens: int, ti
 def backtest(symbol: str, days: int, initial_capital: float):
     """Run a backtest using LLM-generated trading signals."""
     logger.info(f"📊 Starting backtest: {symbol} for {days} days")
+
+
+@trading_agent.command()
+def knowledge():
+    """View trading knowledge and insights from past performance."""
+    logger.info("🧠 Displaying trading knowledge and insights")
     
     try:
-        # Initialize LLM client
-        logger.info("🔧 Initializing LLM client...")
-        client = _initialize_llm_client(symbol, temperature=0.1, max_tokens=100)
-        logger.info("✅ LLM client initialized")
+        rag_system = TradingKnowledgeRAG()
         
-        # Generate trading strategy
-        logger.info("🤖 Generating trading strategy...")
-        strategy = _generate_trading_strategy(client, symbol, days, max_tokens=300)
-        logger.info("✅ Trading strategy generated")
+        # Get learning summary
+        summary = rag_system.get_learning_summary()
+        click.echo(f"\n📊 {summary}")
         
-        # Run backtest simulation
-        logger.info("📈 Running backtest simulation...")
-        results = _run_backtest_simulation(strategy, symbol, days, initial_capital)
-        logger.info("✅ Backtest completed")
+        # Get recent context
+        context = rag_system.get_relevant_context("trading performance", max_insights=5)
+        click.echo(f"\n🔍 Recent Context:\n{context}")
         
-        # Display results
-        _display_backtest_results(results)
+        # Show knowledge file location
+        knowledge_file = rag_system.knowledge_file
+        click.echo(f"\n💾 Knowledge stored in: {knowledge_file}")
         
-        # Save results
-        _save_backtest_results(results, symbol, days)
+        if knowledge_file.exists():
+            with open(knowledge_file, 'r') as f:
+                knowledge = json.load(f)
+                total_insights = knowledge.get('total_insights', 0)
+                last_updated = knowledge.get('last_updated', 'Unknown')
+                click.echo(f"📈 Total insights: {total_insights}")
+                click.echo(f"🕒 Last updated: {last_updated}")
         
-        logger.info("🎉 Backtest completed successfully!")
+        logger.info("✅ Trading knowledge displayed successfully")
         
     except Exception as e:
-        logger.error(f"❌ Backtest failed: {e}", exc_info=True)
-        click.echo(f"❌ Backtest failed: {e}")
+        logger.error(f"❌ Failed to display trading knowledge: {e}")
+        click.echo(f"❌ Error: {e}")
         sys.exit(1)
+
+
+@trading_agent.command()
+def extract_insights():
+    """Extract trading insights from current backtest data and save to knowledge base."""
+    logger.info("🧠 Extracting trading insights from current data")
     
-    finally:
-        if 'client' in locals():
-            client.close()
+    try:
+        rag_system = TradingKnowledgeRAG()
+        
+        # Get current backtest results
+        from src.api.system_api import get_backtest_results
+        backtest_results = get_backtest_results()
+        
+        # Extract insights
+        insights = rag_system.extract_trading_insights(backtest_results)
+        
+        # Save to knowledge base
+        if rag_system.save_knowledge(insights):
+            click.echo(f"✅ Trading insights extracted and saved!")
+            click.echo(f"📊 New insights: {len(insights.get('key_patterns', []))} patterns, {len(insights.get('actionable_lessons', []))} lessons")
+            
+            # Show the insights
+            if insights.get('performance_summary'):
+                perf = insights['performance_summary']
+                click.echo(f"\n📈 Performance: {perf.get('total_trades', 0)} trades, {perf.get('hit_rate', 0):.1%} win rate")
+            
+            if insights.get('key_patterns'):
+                click.echo(f"\n🔍 Key Patterns:")
+                for pattern in insights['key_patterns']:
+                    click.echo(f"  • {pattern}")
+            
+            if insights.get('actionable_lessons'):
+                click.echo(f"\n💡 Actionable Lessons:")
+                for lesson in insights['actionable_lessons']:
+                    click.echo(f"  • {lesson}")
+        else:
+            click.echo("❌ Failed to save insights")
+            
+        logger.info("✅ Trading insights extracted successfully")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to extract trading insights: {e}")
+        click.echo(f"❌ Error: {e}")
+        sys.exit(1)
 
 
 @trading_agent.command()
