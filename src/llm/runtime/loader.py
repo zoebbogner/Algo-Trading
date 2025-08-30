@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from src.llm.backends.base import LLMClient, LLMConfigError
 from src.llm.backends.local_llama import LocalLlamaClient
+from src.llm.backends.openai_like import OpenAILikeClient
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +83,15 @@ def _override_backend_selection(config: Dict[str, Any]) -> None:
 
 def _override_model_path(config: Dict[str, Any]) -> None:
     """Override model path from environment."""
-    env_model_path = os.getenv('LLM_INSTRUCT_MODEL_PATH')
-    if env_model_path:
-        config['model'] = env_model_path
-        logger.info(f"Model path overridden from env: {Path(env_model_path).name}")
+    # Only override model path for local_llama backend
+    if config.get('backend') == 'local_llama':
+        env_model_path = os.getenv('LLM_INSTRUCT_MODEL_PATH')
+        if env_model_path:
+            config['model'] = env_model_path
+            config['model_path'] = env_model_path  # Also set model_path for LocalLlamaClient
+            logger.info(f"Model path overridden from env: {Path(env_model_path).name}")
+    else:
+        logger.info(f"Model path override skipped for {config.get('backend')} backend")
 
 
 def _override_generation_params(config: Dict[str, Any]) -> None:
@@ -157,8 +163,7 @@ def _create_client_instance(backend: str, config: Dict[str, Any], run_id: str) -
     if backend == 'local_llama':
         return LocalLlamaClient(config)
     elif backend == 'openai_like':
-        # TODO: Implement OpenAI-like backend
-        raise NotImplementedError("OpenAI-like backend not yet implemented")
+        return OpenAILikeClient(config)
     else:
         raise LLMConfigError(f"Unknown backend: {backend}")
 

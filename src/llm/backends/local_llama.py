@@ -77,6 +77,10 @@ class LocalLlamaClient(LLMClient):
         try:
             full_prompt = self._prepare_prompt(prompt, system, json_mode)
             gen_kwargs = self._build_generation_kwargs(max_tokens, seed)
+            
+            # Set the prompt in the generation kwargs
+            gen_kwargs['prompt'] = full_prompt
+            
             response = self.model.generate(**gen_kwargs)
             
             response_text = self._process_response(response, json_mode)

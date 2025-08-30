@@ -11,8 +11,20 @@ from typing import Dict, Any
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.llm import get_llm_client
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Environment variables loaded from .env file")
+except ImportError:
+    print("⚠️ python-dotenv not available, using system environment variables")
+except Exception as e:
+    print(f"⚠️ Failed to load .env file: {e}")
+
 from src.utils.logging import setup_logging, get_logger
+from src.llm import get_llm_client
+
+logger = get_logger(__name__)
 
 
 @click.group()
@@ -30,6 +42,7 @@ def analyze_symbol(symbol: str, timeframe: str, temperature: float):
     """Analyze a specific symbol using LLM-powered market analysis."""
     logger = get_logger(__name__)
     
+    client = None # Initialize client to None for finally block
     try:
         client = _initialize_llm_client(symbol, temperature)
         market_data = _get_market_data(symbol, timeframe)
@@ -46,7 +59,7 @@ def analyze_symbol(symbol: str, timeframe: str, temperature: float):
         sys.exit(1)
     
     finally:
-        if 'client' in locals():
+        if client:
             client.close()
 
 
@@ -77,56 +90,58 @@ def _get_market_data(symbol: str, timeframe: str) -> Dict[str, Any]:
 
 def _create_analysis_prompt(symbol: str, timeframe: str, market_data: Dict[str, Any]) -> str:
     """Create the analysis prompt with market data."""
-    return f"""You are an expert quantitative trading analyst. Analyze the market data for {symbol} on {timeframe} timeframe and provide a trading recommendation.
-
-Current Market Data:
-- Symbol: {symbol}
-- Timeframe: {timeframe}
-- Price: $50,000 (placeholder)
-- Volume: High
-- Trend: Bullish
-- RSI: 65 (neutral)
-- MACD: Positive momentum
-
-Provide a trading recommendation in valid JSON format only:
+    return f"""Analyze {symbol} on {timeframe} timeframe. Provide trading recommendation in JSON format:
 
 {{
-  "version": "1.0.0",
-  "intent": "propose_trade",
   "symbol": "{symbol}",
   "timeframe": "{timeframe}",
-  "rationale": "Clear explanation of your analysis and reasoning",
-  "action": {{
-    "type": "hold|enter_long|enter_short|exit",
-    "confidence": 0.0-1.0,
-    "constraints": {{
-      "max_position_size": 0.0-1.0,
-      "stop_loss_pct": 0.0-0.5,
-      "take_profit_pct": 0.0-2.0,
-      "time_horizon": "intraday|swing|position"
-    }},
-    "regime_context": {{
-      "regime_type": "trending|ranging|volatile|breakout|consolidation",
-      "regime_confidence": 0.0-1.0,
-      "regime_duration": "Estimated duration"
-    }}
-  }},
-  "metadata": {{
-    "analysis_timestamp": "{datetime.now().isoformat()}",
-    "data_sources": ["Technical indicators", "Price action", "Volume analysis"],
-    "indicators_used": ["RSI", "MACD", "Moving Averages"],
-    "risk_factors": ["Market volatility", "Economic events", "Technical levels"]
-  }}
+  "action": "hold|buy|sell",
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation"
 }}"""
 
 
 def _generate_analysis(client: Any, prompt: str) -> Any:
-    """Generate analysis using the LLM client."""
-    return client.generate(
-        prompt,
-        json_mode=True,
-        max_tokens=512
-    )
+    """Generate analysis using the LLM client with timeout protection."""
+    import signal
+    
+    print(f"🔍 Starting LLM generation...")
+    print(f"📝 Prompt length: {len(prompt)} characters")
+    print(f"⏱️  Setting 30-second timeout...")
+    
+    def timeout_handler(signum, frame):
+        print(f"⏰ TIMEOUT: LLM generation exceeded 30 seconds")
+        raise TimeoutError("LLM generation timed out")
+    
+    # Set a 30-second timeout
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(30)
+    
+    try:
+        print(f"🚀 Calling client.generate()...")
+        print(f"📊 Parameters: json_mode=True, max_tokens=256")
+        
+        result = client.generate(
+            prompt,
+            json_mode=True,
+            max_tokens=256  # Reduced from 512 to prevent long generation
+        )
+        
+        print(f"✅ LLM generation completed successfully!")
+        print(f"📄 Result type: {type(result)}")
+        print(f"📄 Result text length: {len(result.text) if hasattr(result, 'text') else 'N/A'}")
+        
+        signal.alarm(0)  # Cancel the alarm
+        return result
+        
+    except TimeoutError:
+        print(f"⏰ TIMEOUT ERROR: LLM generation timed out after 30 seconds")
+        signal.alarm(0)
+        raise TimeoutError("LLM generation timed out after 30 seconds")
+    except Exception as e:
+        print(f"❌ ERROR during LLM generation: {type(e).__name__}: {str(e)}")
+        signal.alarm(0)
+        raise e
 
 
 def _process_analysis_result(result: Any, symbol: str, timeframe: str) -> None:

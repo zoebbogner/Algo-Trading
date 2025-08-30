@@ -2,15 +2,14 @@
 # This file configures the LLM backend and parameters
 
 # Backend selection (local_llama, openai_like, together, bedrock)
-backend: "local_llama"
+backend: "openai_like"
 
 # Model configuration
-model: "Meta-Llama-3-8B-Instruct.Q4_0.gguf"
-model_path: ""  # Will be overridden by LLM_INSTRUCT_MODEL_PATH env var
+model: "gpt-4o-mini"  # or "gpt-4o-nano" / "gpt-5-nano" when available
 
 # Generation parameters
 temperature: 0.2          # Low temperature for consistent, structured outputs
-max_tokens: 512          # Reasonable limit for trading recommendations
+max_tokens: 100          # Optimized for cost-effective trading recommendations
 stop: []                 # No specific stop sequences
 json_mode: true          # Enforce structured JSON output
 

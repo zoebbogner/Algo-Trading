@@ -1,0 +1,12 @@
+{
+  "run_id": "57217ba9",
+  "total_return": -0.8592230007178733,
+  "sharpe_ratio": -0.37651504791324,
+  "max_drawdown": -0.01128792987050023,
+  "total_trades": 9,
+  "hit_rate": 0.0,
+  "volatility": 0.0014401631507781334,
+  "avg_daily_return": -0.00022683656226198644,
+  "winning_trades": 0,
+  "losing_trades": 9
+}
