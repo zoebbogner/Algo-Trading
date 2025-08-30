@@ -29,7 +29,9 @@ class TradingKnowledgeRAG:
                 'performance_summary': {},
                 'key_patterns': [],
                 'risk_insights': {},
-                'actionable_lessons': []
+                'actionable_lessons': [],
+                'recent_trades': [],
+                'trade_patterns': {}
             }
             
             # Extract performance metrics
@@ -50,6 +52,26 @@ class TradingKnowledgeRAG:
                         'closed_positions': round(closed_rate, 3),
                         'open_positions': open_trades
                     }
+                    
+                    # Extract recent trade details from backtest results
+                    if 'recent_performance_html' in backtest_results:
+                        recent_performance = backtest_results.get('recent_performance_html', '')
+                        if recent_performance:
+                            # Parse recent trades from the HTML content
+                            trade_details = self._extract_trade_details(recent_performance)
+                            insights['recent_trades'] = trade_details[:5]  # Keep last 5 trades
+                            
+                            # Analyze trade patterns
+                            insights['trade_patterns'] = self._analyze_trade_patterns(trade_details)
+                    
+                    # Also extract from individual backtest files if available
+                    if 'all_backtests' in backtest_results:
+                        all_backtests = backtest_results.get('all_backtests', [])
+                        if all_backtests and not insights['recent_trades']:
+                            # Extract from individual backtest files
+                            trade_details = self._extract_from_backtest_files(all_backtests)
+                            insights['recent_trades'] = trade_details[:5]
+                            insights['trade_patterns'] = self._analyze_trade_patterns(trade_details)
                     
                     # Key patterns
                     if hit_rate < 0.3:
@@ -80,6 +102,153 @@ class TradingKnowledgeRAG:
         except Exception as e:
             logger.error(f"Error extracting trading insights: {e}")
             return {}
+    
+    def _extract_trade_details(self, recent_performance_html: str) -> List[Dict]:
+        """Extract trade details from recent performance HTML."""
+        try:
+            trades = []
+            
+            # Parse the HTML content to extract trade info
+            lines = recent_performance_html.split('\n')
+            
+            for line_index, line in enumerate(lines):
+                line = line.strip()
+                if 'bt-cell-symbol' in line and 'span' in line:
+                    # Extract symbol
+                    symbol_start = line.find('>') + 1
+                    symbol_end = line.find('<', symbol_start)
+                    symbol = line[symbol_start:symbol_end].strip()
+                    
+                    # Look for the next few lines to get return, sharpe, and date
+                    trade_data = {'symbol': symbol}
+                    
+                    # Find return, sharpe, and date in subsequent lines
+                    for i in range(line_index + 1, min(line_index + 10, len(lines))):
+                        next_line = lines[i].strip()
+                        
+                        if 'bt-cell-return' in next_line and 'total_return' not in trade_data:
+                            return_start = next_line.find('>') + 1
+                            return_end = next_line.find('<', return_start)
+                            trade_data['total_return'] = next_line[return_start:return_end].strip()
+                        
+                        elif 'bt-cell-sharpe' in next_line and 'sharpe_ratio' not in trade_data:
+                            sharpe_start = next_line.find('>') + 1
+                            sharpe_end = next_line.find('<', sharpe_start)
+                            trade_data['sharpe_ratio'] = next_line[sharpe_start:sharpe_end].strip()
+                        
+                        elif 'bt-cell-date' in next_line and 'date' not in trade_data:
+                            date_start = next_line.find('>') + 1
+                            date_end = next_line.find('<', date_start)
+                            trade_data['date'] = next_line[date_start:date_end].strip()
+                    
+                    # Only add if we have at least symbol and return
+                    if 'total_return' in trade_data:
+                        trade_data['hit_rate'] = 'N/A'  # Not available in HTML
+                        trade_data['status'] = 'open'  # Assume open for now
+                        trades.append(trade_data)
+            
+            return trades
+            
+        except Exception as e:
+            logger.error(f"Error extracting trade details: {e}")
+            return []
+    
+    def _analyze_trade_patterns(self, trades: List[Dict]) -> Dict:
+        """Analyze patterns in recent trades."""
+        try:
+            if not trades:
+                return {}
+            
+            patterns = {
+                'best_performing_symbol': '',
+                'worst_performing_symbol': '',
+                'avg_sharpe': 0.0,
+                'symbol_distribution': {},
+                'risk_level': 'medium'
+            }
+            
+            # Analyze symbol performance
+            symbol_returns = {}
+            sharpe_values = []
+            
+            for trade in trades:
+                symbol = trade.get('symbol', 'Unknown')
+                total_return = trade.get('total_return', '0%')
+                sharpe = trade.get('sharpe_ratio', '0')
+                
+                # Track symbol returns
+                if symbol not in symbol_returns:
+                    symbol_returns[symbol] = []
+                symbol_returns[symbol].append(total_return)
+                
+                # Track Sharpe ratios
+                try:
+                    sharpe_float = float(sharpe)
+                    sharpe_values.append(sharpe_float)
+                except:
+                    pass
+            
+            # Find best/worst performing symbols
+            if symbol_returns:
+                best_symbol = max(symbol_returns.keys(), key=lambda x: len(symbol_returns[x]))
+                worst_symbol = min(symbol_returns.keys(), key=lambda x: len(symbol_returns[x]))
+                patterns['best_performing_symbol'] = best_symbol
+                patterns['worst_performing_symbol'] = worst_symbol
+            
+            # Calculate average Sharpe ratio
+            if sharpe_values:
+                patterns['avg_sharpe'] = round(sum(sharpe_values) / len(sharpe_values), 2)
+            
+            # Determine risk level based on Sharpe ratio
+            if patterns['avg_sharpe'] > 1.0:
+                patterns['risk_level'] = 'low'
+            elif patterns['avg_sharpe'] < 0.5:
+                patterns['risk_level'] = 'high'
+            
+            return patterns
+            
+        except Exception as e:
+            logger.error(f"Error analyzing trade patterns: {e}")
+            return {}
+    
+    def _extract_from_backtest_files(self, all_backtests: List) -> List[Dict]:
+        """Extract trade details from individual backtest files."""
+        try:
+            trades = []
+            
+            for file_path in all_backtests[:5]:  # Process first 5 files
+                try:
+                    with open(file_path, 'r') as f:
+                        backtest_data = json.load(f)
+                    
+                    # Extract trade information
+                    symbol = backtest_data.get('symbol', 'Unknown')
+                    total_return = backtest_data.get('total_return_pct', 0)
+                    sharpe_ratio = backtest_data.get('sharpe_ratio', 0)
+                    winning_trades = backtest_data.get('winning_trades', 0)
+                    losing_trades = backtest_data.get('losing_trades', 0)
+                    total_trades = backtest_data.get('total_trades', 0)
+                    
+                    if total_trades > 0:
+                        hit_rate = winning_trades / total_trades if winning_trades > 0 else 0
+                        
+                        trades.append({
+                            'symbol': symbol,
+                            'total_return': f"{total_return:.1%}" if isinstance(total_return, (int, float)) else str(total_return),
+                            'sharpe_ratio': f"{sharpe_ratio:.2f}" if isinstance(sharpe_ratio, (int, float)) else str(sharpe_ratio),
+                            'hit_rate': f"{hit_rate:.1%}",
+                            'status': 'closed' if (winning_trades + losing_trades) == total_trades else 'open'
+                        })
+                
+                except Exception as e:
+                    logger.warning(f"Error processing backtest file {file_path}: {e}")
+                    continue
+            
+            return trades
+            
+        except Exception as e:
+            logger.error(f"Error extracting from backtest files: {e}")
+            return []
     
     def save_knowledge(self, insights: Dict) -> bool:
         """Save trading insights to knowledge base."""
@@ -146,6 +315,28 @@ class TradingKnowledgeRAG:
                         f"Recent Performance: {perf.get('total_trades', 0)} trades, "
                         f"{perf.get('hit_rate', 0):.1%} win rate, "
                         f"{perf.get('open_positions', 0)} open positions"
+                    )
+            
+            # Add recent trade details
+            if latest.get('recent_trades'):
+                trades_summary = []
+                for trade in latest['recent_trades'][:3]:  # Show last 3 trades
+                    symbol = trade.get('symbol', 'Unknown')
+                    total_return = trade.get('total_return', '0%')
+                    sharpe = trade.get('sharpe_ratio', '0')
+                    trades_summary.append(f"{symbol}: {total_return} return, {sharpe} Sharpe")
+                
+                if trades_summary:
+                    context_parts.append(f"Recent Trades: {'; '.join(trades_summary)}")
+            
+            # Add trade patterns
+            if latest.get('trade_patterns'):
+                patterns = latest['trade_patterns']
+                if patterns.get('best_performing_symbol') and patterns.get('worst_performing_symbol'):
+                    context_parts.append(
+                        f"Trade Patterns: Best {patterns['best_performing_symbol']}, "
+                        f"Worst {patterns['worst_performing_symbol']}, "
+                        f"Risk: {patterns.get('risk_level', 'medium')}"
                     )
             
             # Add key patterns (most important)
