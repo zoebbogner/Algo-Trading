@@ -229,7 +229,19 @@ class TradingKnowledgeRAG:
                     open_positions_count = len(final_positions)
                     
                     # Extract symbol from run directory name or use first position
-                    symbol = list(final_positions.keys())[0] if final_positions else 'Unknown'
+                    if final_positions:
+                        symbol = list(final_positions.keys())[0]
+                    else:
+                        # Try to extract symbol from run_id or use a default
+                        run_id_str = str(run_id)
+                        if 'BTC' in run_id_str or 'btc' in run_id_str:
+                            symbol = 'BTCUSDT'
+                        elif 'ETH' in run_id_str or 'eth' in run_id_str:
+                            symbol = 'ETHUSDT'
+                        elif 'BNB' in run_id_str or 'bnb' in run_id_str:
+                            symbol = 'BNBUSDT'
+                        else:
+                            symbol = 'Unknown'
                     
                     trades.append({
                         'run_id': str(run_id),
@@ -307,12 +319,16 @@ class TradingKnowledgeRAG:
                 except:
                     pass
             
-            # Find best/worst performing runs
+            # Find best/worst performing runs and symbols
             if returns:
                 best_index = returns.index(max(returns))
                 worst_index = returns.index(min(returns))
+                
+                # Store both run IDs and symbols for flexibility
                 patterns['best_performing_run'] = trades[best_index].get('run_id', 'Unknown')[:8]
                 patterns['worst_performing_run'] = trades[worst_index].get('run_id', 'Unknown')[:8]
+                patterns['best_performing_symbol'] = trades[best_index].get('symbol', 'Unknown')
+                patterns['worst_performing_symbol'] = trades[worst_index].get('symbol', 'Unknown')
             
             # Calculate averages
             if sharpe_values:
@@ -717,13 +733,19 @@ class TradingKnowledgeRAG:
                 if trades_summary:
                     context_parts.append(f"Recent Trades: {'; '.join(trades_summary)}")
             
-            # Add enhanced trade patterns
+            # Add enhanced trade patterns with meaningful symbols
             if latest.get('trade_patterns'):
                 patterns = latest['trade_patterns']
                 pattern_summary = []
                 
-                if patterns.get('best_performing_run') and patterns.get('worst_performing_run'):
-                    pattern_summary.append(f"Best: {patterns['best_performing_run']}, Worst: {patterns['worst_performing_run']}")
+                # Show best/worst performing symbols instead of hash IDs
+                if patterns.get('best_performing_symbol') and patterns.get('worst_performing_symbol'):
+                    pattern_summary.append(f"Best: {patterns['best_performing_symbol']}, Worst: {patterns['worst_performing_symbol']}")
+                elif patterns.get('best_performing_run') and patterns.get('worst_performing_run'):
+                    # Fallback: show hash IDs but make them shorter and more readable
+                    best_id = patterns['best_performing_run'][:6] if patterns['best_performing_run'] else 'Unknown'
+                    worst_id = patterns['worst_performing_run'][:6] if patterns['worst_performing_run'] else 'Unknown'
+                    pattern_summary.append(f"Best Run: {best_id}, Worst Run: {worst_id}")
                 
                 if patterns.get('avg_sharpe'):
                     pattern_summary.append(f"Avg Sharpe: {patterns['avg_sharpe']}")
@@ -754,23 +776,58 @@ class TradingKnowledgeRAG:
                 if execution.get('trade_execution', {}).get('execution_quality'):
                     context_parts.append(f"Execution: {execution['trade_execution']['execution_quality']} quality")
             
-            # Add key patterns (most important)
-            patterns = []
+            # Add key patterns (most important) - remove duplicates
+            all_patterns = []
             for insight in recent_insights:
-                patterns.extend(insight.get('key_patterns', [])[:2])  # Limit to 2 per insight
+                all_patterns.extend(insight.get('key_patterns', []))
             
-            if patterns:
-                context_parts.append(f"Key Patterns: {'; '.join(patterns[:3])}")
+            # Remove duplicates and limit to most important
+            unique_patterns = list(dict.fromkeys(all_patterns))  # Preserves order while removing duplicates
+            if unique_patterns:
+                context_parts.append(f"Key Patterns: {'; '.join(unique_patterns[:3])}")
             
-            # Add actionable lessons
-            lessons = []
+            # Add actionable lessons - remove duplicates
+            all_lessons = []
             for insight in recent_insights:
-                lessons.extend(insight.get('actionable_lessons', [])[:1])  # Limit to 1 per insight
+                all_lessons.extend(insight.get('actionable_lessons', []))
             
-            if lessons:
-                context_parts.append(f"Lessons: {'; '.join(lessons[:2])}")
+            # Remove duplicates and limit to most important
+            unique_lessons = list(dict.fromkeys(all_lessons))  # Preserves order while removing duplicates
+            if unique_lessons:
+                context_parts.append(f"Lessons: {'; '.join(unique_lessons[:2])}")
             
-            return " | ".join(context_parts)
+            # Organize context into logical sections for better readability
+            if not context_parts:
+                return "No trading history available for learning."
+            
+            # Group context into logical sections
+            performance_section = []
+            trade_section = []
+            analysis_section = []
+            
+            for part in context_parts:
+                if "Recent Performance" in part:
+                    performance_section.append(part)
+                elif "Recent Trades" in part or "Trade Patterns" in part:
+                    trade_section.append(part)
+                elif "Portfolio" in part or "Execution" in part:
+                    analysis_section.append(part)
+                elif "Key Patterns" in part or "Lessons" in part:
+                    analysis_section.append(part)
+            
+            # Build organized context
+            organized_context = []
+            
+            if performance_section:
+                organized_context.append(" | ".join(performance_section))
+            
+            if trade_section:
+                organized_context.append(" | ".join(trade_section))
+            
+            if analysis_section:
+                organized_context.append(" | ".join(analysis_section))
+            
+            return "\n".join(organized_context)
             
         except Exception as e:
             logger.error(f"Error getting relevant context: {e}")
