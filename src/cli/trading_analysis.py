@@ -31,15 +31,53 @@ def analyze_symbol(symbol: str, timeframe: str, temperature: float):
     logger = get_logger(__name__)
     
     try:
-        # Initialize LLM client
-        logger.info(f"Initializing LLM client for {symbol} analysis")
-        client = get_llm_client(
-            run_id=f"trading_analysis_{symbol}_{datetime.now().isoformat()}",
-            config={'temperature': temperature}
-        )
+        client = _initialize_llm_client(symbol, temperature)
+        market_data = _get_market_data(symbol, timeframe)
+        analysis_prompt = _create_analysis_prompt(symbol, timeframe, market_data)
         
-        # Create analysis prompt
-        analysis_prompt = f"""You are an expert quantitative trading analyst. Analyze the market data for {symbol} on {timeframe} timeframe and provide a trading recommendation.
+        logger.info(f"Generating LLM analysis for {symbol} on {timeframe} timeframe")
+        result = _generate_analysis(client, analysis_prompt)
+        
+        _process_analysis_result(result, symbol, timeframe)
+        
+    except Exception as e:
+        logger.error(f"Trading analysis failed: {e}")
+        click.echo(f"❌ Analysis failed: {e}")
+        sys.exit(1)
+    
+    finally:
+        if 'client' in locals():
+            client.close()
+
+
+def _initialize_llm_client(symbol: str, temperature: float) -> Any:
+    """Initialize the LLM client for analysis."""
+    logger.info(f"Initializing LLM client for {symbol} analysis")
+    return get_llm_client(
+        run_id=f"trading_analysis_{symbol}_{datetime.now().isoformat()}",
+        config={'temperature': temperature}
+    )
+
+
+def _get_market_data(symbol: str, timeframe: str) -> Dict[str, Any]:
+    """Get market data for analysis (placeholder implementation)."""
+    return {
+        'current_price': 50000.0,
+        'current_volume': 1000000,
+        'price_change_24h': 0.025,
+        'rsi_value': 65.5,
+        'macd_value': 0.002,
+        'ma_analysis': "Price above 20MA, below 50MA",
+        's_r_levels': "Support: 48000, Resistance: 52000",
+        'market_trend': "Bullish",
+        'sector_performance': "Technology sector up 2%",
+        'market_events': "Fed meeting this week, earnings season"
+    }
+
+
+def _create_analysis_prompt(symbol: str, timeframe: str, market_data: Dict[str, Any]) -> str:
+    """Create the analysis prompt with market data."""
+    return f"""You are an expert quantitative trading analyst. Analyze the market data for {symbol} on {timeframe} timeframe and provide a trading recommendation.
 
 Current Market Data:
 - Symbol: {symbol}
@@ -80,115 +118,116 @@ Provide a trading recommendation in valid JSON format only:
     "risk_factors": ["Market volatility", "Economic events", "Technical levels"]
   }}
 }}"""
-        
-        logger.info(f"Generating LLM analysis for {symbol} on {timeframe} timeframe")
-        
-        # Generate analysis
-        result = client.generate(
-            analysis_prompt,
-            json_mode=True,
-            max_tokens=512
-        )
-        
-        # Parse and validate response
-        try:
-            analysis = json.loads(result.text)
-            logger.info("✅ LLM analysis generated successfully")
-            
-            # Display results
-            _display_analysis_results(analysis, result.latency_ms)
-            
-            # Save analysis to file
-            _save_analysis(analysis, symbol, timeframe)
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}")
-            logger.info(f"Raw response: {result.text}")
-            click.echo("❌ LLM response is not valid JSON")
-            return
-        
-        finally:
-            client.close()
-            
-    except Exception as e:
-        logger.error(f"Trading analysis failed: {e}")
-        click.echo(f"❌ Analysis failed: {e}")
-        sys.exit(1)
 
 
-def _display_analysis_results(analysis: Dict[str, Any], latency_ms: int):
+def _generate_analysis(client: Any, prompt: str) -> Any:
+    """Generate analysis using the LLM client."""
+    return client.generate(
+        prompt,
+        json_mode=True,
+        max_tokens=512
+    )
+
+
+def _process_analysis_result(result: Any, symbol: str, timeframe: str) -> None:
+    """Process and display the analysis result."""
+    try:
+        analysis = json.loads(result.text)
+        logger.info("✅ LLM analysis generated successfully")
+        
+        _display_analysis_results(analysis, result.latency_ms)
+        _save_analysis(analysis, symbol, timeframe)
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM response as JSON: {e}")
+        logger.info(f"Raw response: {result.text}")
+        click.echo("❌ LLM response is not valid JSON")
+
+
+def _display_analysis_results(analysis: Dict[str, Any], latency_ms: int) -> None:
     """Display the analysis results in a formatted way."""
     click.echo(f"\n📊 Trading Analysis Results")
     click.echo(f"=" * 50)
     
-    # Basic info
+    _display_basic_info(analysis)
+    _display_action_details(analysis)
+    _display_rationale(analysis)
+    _display_performance(latency_ms, analysis)
+
+
+def _display_basic_info(analysis: Dict[str, Any]) -> None:
+    """Display basic analysis information."""
     click.echo(f"Symbol: {analysis.get('symbol', 'N/A')}")
     click.echo(f"Timeframe: {analysis.get('timeframe', 'N/A')}")
     click.echo(f"Intent: {analysis.get('intent', 'N/A')}")
-    
-    # Action details
+
+
+def _display_action_details(analysis: Dict[str, Any]) -> None:
+    """Display action details and constraints."""
     action = analysis.get('action', {})
     click.echo(f"Action: {action.get('type', 'N/A')}")
     
-    # Handle confidence safely
     confidence = action.get('confidence', 'N/A')
     if isinstance(confidence, (int, float)):
         click.echo(f"Confidence: {confidence:.2f}")
     else:
         click.echo(f"Confidence: {confidence}")
     
-    # Constraints
-    constraints = action.get('constraints', {})
-    if constraints:
-        # Handle position size safely
-        pos_size = constraints.get('max_position_size', 'N/A')
-        if isinstance(pos_size, (int, float)):
-            click.echo(f"Position Size: {pos_size:.2%}")
-        else:
-            click.echo(f"Position Size: {pos_size}")
-        
-        # Handle stop loss safely
-        stop_loss = constraints.get('stop_loss_pct', 'N/A')
-        if isinstance(stop_loss, (int, float)):
-            click.echo(f"Stop Loss: {stop_loss:.2%}")
-        else:
-            click.echo(f"Stop Loss: {stop_loss}")
-        
-        # Handle take profit safely
-        take_profit = constraints.get('take_profit_pct', 'N/A')
-        if isinstance(take_profit, (int, float)):
-            click.echo(f"Take Profit: {take_profit:.2%}")
-        else:
-            click.echo(f"Take Profit: {take_profit}")
+    _display_constraints(action.get('constraints', {}))
+    _display_regime_context(action.get('regime_context', {}))
+
+
+def _display_constraints(constraints: Dict[str, Any]) -> None:
+    """Display trading constraints."""
+    if not constraints:
+        return
     
-    # Regime context
-    regime = action.get('regime_context', {})
-    if regime:
-        click.echo(f"Market Regime: {regime.get('regime_type', 'N/A')}")
-        
-        # Handle regime confidence safely
-        regime_conf = regime.get('regime_confidence', 'N/A')
-        if isinstance(regime_conf, (int, float)):
-            click.echo(f"Regime Confidence: {regime_conf:.2f}")
-        else:
-            click.echo(f"Regime Confidence: {regime_conf}")
+    _display_percentage_constraint(constraints, 'max_position_size', 'Position Size')
+    _display_percentage_constraint(constraints, 'stop_loss_pct', 'Stop Loss')
+    _display_percentage_constraint(constraints, 'take_profit_pct', 'Take Profit')
+
+
+def _display_percentage_constraint(constraints: Dict[str, Any], key: str, label: str) -> None:
+    """Display a percentage constraint."""
+    value = constraints.get(key, 'N/A')
+    if isinstance(value, (int, float)):
+        click.echo(f"{label}: {value:.2%}")
+    else:
+        click.echo(f"{label}: {value}")
+
+
+def _display_regime_context(regime: Dict[str, Any]) -> None:
+    """Display market regime context."""
+    if not regime:
+        return
     
-    # Rationale
+    click.echo(f"Market Regime: {regime.get('regime_type', 'N/A')}")
+    
+    regime_conf = regime.get('regime_confidence', 'N/A')
+    if isinstance(regime_conf, (int, float)):
+        click.echo(f"Regime Confidence: {regime_conf:.2f}")
+    else:
+        click.echo(f"Regime Confidence: {regime_conf}")
+
+
+def _display_rationale(analysis: Dict[str, Any]) -> None:
+    """Display the analysis rationale."""
     click.echo(f"\n💭 Rationale:")
     click.echo(f"   {analysis.get('rationale', 'No rationale provided')}")
-    
-    # Performance
+
+
+def _display_performance(latency_ms: int, analysis: Dict[str, Any]) -> None:
+    """Display performance metrics."""
     click.echo(f"\n⚡ Performance:")
     click.echo(f"   Generation Time: {latency_ms}ms")
     click.echo(f"   Model: {analysis.get('metadata', {}).get('model', 'N/A')}")
 
 
-def _save_analysis(analysis: Dict[str, Any], symbol: str, timeframe: str):
+def _save_analysis(analysis: Dict[str, Any], symbol: str, timeframe: str) -> None:
     """Save the analysis results to a file."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"analysis_{symbol}_{timeframe}_{timestamp}.json"
     
-    # Ensure logs directory exists
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
     

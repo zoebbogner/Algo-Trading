@@ -11,7 +11,7 @@ Implements professional-grade feature engineering with:
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -37,16 +37,14 @@ class FeatureEngineer:
     """
 
     def __init__(self, config: dict[str, Any]):
-        """
-        Initialize the feature engineer.
-        
-        Args:
-            config: Configuration dictionary with feature parameters
-        """
-        self.config = config
-        self.logger = get_logger(f"{__name__}.{self.__class__.__name__}")
+        """Initialize the feature engineer with configuration."""
+        self._setup_configuration(config)
+        self._validate_configuration()
+        logger.info("FeatureEngineer initialized successfully")
 
-        # Extract configuration
+    def _setup_configuration(self, config: dict[str, Any]) -> None:
+        """Setup configuration parameters."""
+        self.config = config
         self.rolling_windows = config.get('rolling_windows', {})
         self.thresholds = config.get('thresholds', {})
         self.cross_assets = config.get('cross_assets', {})
@@ -60,23 +58,28 @@ class FeatureEngineer:
         self.bars_per_day = self.data_config.get('bars_per_day', 1440)
         self.bars_per_quarter = self.data_config.get('bars_per_quarter', 129600)
 
-        # Validate configuration
-        self._validate_config()
-
-    def _validate_config(self) -> None:
+    def _validate_configuration(self) -> None:
         """Validate configuration parameters."""
+        self._validate_required_keys()
+        self._validate_rolling_windows()
+        self._validate_thresholds()
+
+    def _validate_required_keys(self) -> None:
+        """Validate that required configuration keys are present."""
         required_keys = ['rolling_windows', 'thresholds', 'output']
         missing_keys = [key for key in required_keys if key not in self.config]
 
         if missing_keys:
             raise ValueError(f"Missing required configuration keys: {missing_keys}")
 
-        # Validate rolling windows
+    def _validate_rolling_windows(self) -> None:
+        """Validate rolling window configurations."""
         for window_type, windows in self.rolling_windows.items():
             if not isinstance(windows, list) or not all(isinstance(w, int) for w in windows):
                 raise ValueError(f"Invalid rolling windows for {window_type}: {windows}")
 
-        # Validate thresholds
+    def _validate_thresholds(self) -> None:
+        """Validate threshold configurations."""
         required_thresholds = [
             'volume_spike_multiplier', 'volatility_regime_percentile',
             'breakout_lookback', 'stop_atr_multiplier', 'intraday_reversal_threshold'
@@ -88,24 +91,25 @@ class FeatureEngineer:
 
     @log_performance()
     def compute_all_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Compute all features for the input DataFrame.
-        
-        Args:
-            df: Input DataFrame with OHLCV data
-            
-        Returns:
-            DataFrame with all computed features
-        """
-        self.logger.info(f"Computing features for {len(df)} rows")
+        """Compute all features for the input DataFrame."""
+        logger.info(f"Computing features for {len(df)} rows")
 
-        # Validate input data
+        df = self._validate_input_data(df)
+        df = self._compute_feature_groups(df)
+        df = self._apply_post_processing(df)
+        df = self._run_quality_control(df)
+
+        logger.info(f"Feature computation completed. Output shape: {df.shape}")
+        return df
+
+    def _validate_input_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Validate input data requirements."""
         required_columns = ['ts', 'symbol', 'open', 'high', 'low', 'close', 'volume']
         validation_result = validate_dataframe(df, required_columns)
+        
         if not validation_result['valid']:
             raise ValueError(f"Data validation failed: {validation_result['errors']}")
 
-        # Validate timestamps
         timestamp_validation = validate_timestamps(
             df,
             timestamp_column='ts',
@@ -113,42 +117,50 @@ class FeatureEngineer:
             require_monotonic=True,
             require_unique=True
         )
+        
         if not timestamp_validation['valid']:
             raise ValueError(f"Timestamp validation failed: {timestamp_validation['errors']}")
 
-        # Start with base data
-        result_df = df.copy()
+        return df.copy()
 
-        # Compute features in dependency order
-        result_df = self.compute_price_return_features(result_df)
-        result_df = self.compute_trend_momentum_features(result_df)
-        result_df = self.compute_mean_reversion_features(result_df)
-        result_df = self.compute_volatility_risk_features(result_df)
-        result_df = self.compute_volume_liquidity_features(result_df)
-        result_df = self.compute_microstructure_features(result_df)
-        result_df = self.compute_regime_features(result_df)
-        result_df = self.compute_risk_execution_features(result_df)
+    def _compute_feature_groups(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute features in dependency order."""
+        feature_computers = [
+            self._compute_price_return_features,
+            self._compute_trend_momentum_features,
+            self._compute_mean_reversion_features,
+            self._compute_volatility_risk_features,
+            self._compute_volume_liquidity_features,
+            self._compute_microstructure_features,
+            self._compute_regime_features,
+            self._compute_risk_execution_features,
+            self._compute_cross_asset_features
+        ]
 
-        # Compute cross-asset features last (requires all individual features)
-        result_df = self.compute_cross_asset_features(result_df)
+        for computer in feature_computers:
+            df = computer(df)
 
-        # Apply winsorization
-        result_df = self._apply_winsorization(result_df)
+        return df
 
-        # Add metadata
-        result_df = self._add_metadata(result_df)
-
-        # Quality control
-        self._run_quality_control(result_df)
-
-        self.logger.info(f"Feature computation completed. Output shape: {result_df.shape}")
-        return result_df
+    def _apply_post_processing(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply post-processing steps."""
+        df = self._apply_winsorization(df)
+        df = self._add_metadata(df)
+        return df
 
     @log_performance()
-    def compute_price_return_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _compute_price_return_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute price and return features."""
-        self.logger.debug("Computing price and return features")
+        logger.debug("Computing price and return features")
 
+        df = self._add_basic_returns(df)
+        df = self._add_intra_bar_features(df)
+        df = self._add_log_returns(df)
+
+        return df
+
+    def _add_basic_returns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add basic return features."""
         # 1-minute returns
         df['ret_1m'] = df['close'].pct_change()
 
@@ -156,705 +168,469 @@ class FeatureEngineer:
         for period in [5, 15]:
             df[f'ret_{period}m'] = df['close'].pct_change(periods=period)
 
-        # Intra-bar features
+        return df
+
+    def _add_intra_bar_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add intra-bar price features."""
         df['close_to_open'] = (df['close'] - df['open']) / df['open']
         df['hl_range'] = (df['high'] - df['low']) / df['close']
         df['oc_abs'] = abs(df['open'] - df['close']) / df['close']
 
-        # Log returns for better statistical properties
-        df['log_ret_1m'] = np.log(df['close'] / df['close'].shift(1))
+        return df
 
+    def _add_log_returns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add log returns for better statistical properties."""
+        df['log_ret_1m'] = np.log(df['close'] / df['close'].shift(1))
         return df
 
     @log_performance()
-    def compute_trend_momentum_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _compute_trend_momentum_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute trend and momentum features."""
-        self.logger.debug("Computing trend and momentum features")
+        logger.debug("Computing trend and momentum features")
 
-        # Moving averages
+        df = self._add_moving_averages(df)
+        df = self._add_exponential_moving_averages(df)
+        df = self._add_momentum_features(df)
+        df = self._add_trend_slopes(df)
+        df = self._add_breakout_detection(df)
+        df = self._add_rsi_features(df)
+
+        return df
+
+    def _add_moving_averages(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add simple moving averages."""
         for window in self.rolling_windows.get('ma', [20, 50, 100]):
-            df[f'ma_{window}'] = df['close'].rolling(window=window, min_periods=window).mean()
+            df[f'ma_{window}'] = df['close'].rolling(
+                window=window, min_periods=window
+            ).mean()
+        return df
 
-        # Exponential moving averages
+    def _add_exponential_moving_averages(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add exponential moving averages."""
         for window in self.rolling_windows.get('ema', [20, 50]):
-            df[f'ema_{window}'] = df['close'].ewm(span=window, min_periods=window).mean()
+            df[f'ema_{window}'] = df['close'].ewm(
+                span=window, min_periods=window
+            ).mean()
+        return df
 
-        # Momentum
+    def _add_momentum_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add momentum features."""
         for period in [10, 20]:
             df[f'momentum_{period}'] = df['close'] - df['close'].shift(period)
+        return df
 
-        # Trend slope using rolling regression
+    def _add_trend_slopes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add trend slope features using rolling regression."""
         for window in self.rolling_windows.get('regression', [20, 240, 720]):
             df[f'trend_slope_{window}'] = self._compute_rolling_slope(df['close'], window)
+        return df
 
-        # Breakout detection
+    def _add_breakout_detection(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add breakout detection features."""
         breakout_lookback = self.thresholds.get('breakout_lookback', 20)
-        df['breakout_20'] = (df['close'] > df['close'].rolling(breakout_lookback).max().shift(1)).astype(int)
+        df['breakout_20'] = (
+            df['close'] > df['close'].rolling(breakout_lookback).max().shift(1)
+        ).astype(int)
+        return df
 
-        # RSI using Wilder's smoothing (industry standard)
+    def _add_rsi_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add RSI features using Wilder's smoothing."""
         for window in self.rolling_windows.get('rsi', [14]):
             df[f'rsi_{window}'] = self._compute_rsi_wilders(df['close'], window)
-
         return df
 
     @log_performance()
-    def compute_mean_reversion_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _compute_mean_reversion_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute mean reversion features."""
-        self.logger.debug("Computing mean reversion features")
+        logger.debug("Computing mean reversion features")
 
-        # Z-score from moving average
-        for window in self.rolling_windows.get('zscore', [20]):
-            ma = df['close'].rolling(window=window, min_periods=window).mean()
-            std = df['close'].rolling(window=window, min_periods=window).std()
-            df[f'zscore_{window}'] = (df['close'] - ma) / std
+        df = self._add_bollinger_bands(df)
+        df = self._add_stochastic_oscillator(df)
+        df = self._add_williams_r(df)
+        df = self._add_cci(df)
 
-        # Bollinger Bands
-        for window in [20]:
-            ma = df['close'].rolling(window=window, min_periods=window).mean()
-            std = df['close'].rolling(window=window, min_periods=window).std()
-            df[f'bb_upper_{window}'] = ma + (2 * std)
-            df[f'bb_lower_{window}'] = ma - (2 * std)
-            df[f'bb_bandwidth_{window}'] = (df[f'bb_upper_{window}'] - df[f'bb_lower_{window}']) / ma
+        return df
 
-        # Intraday reversal detection
-        threshold = self.thresholds.get('intraday_reversal_threshold', 0.01)
-        df['intraday_reversal_flag'] = self._detect_intraday_reversals(df, threshold)
+    def _add_bollinger_bands(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add Bollinger Bands features."""
+        for window in self.rolling_windows.get('bb', [20]):
+            bb_std = df['close'].rolling(window=window).std()
+            bb_mean = df['close'].rolling(window=window).mean()
+            
+            df[f'bb_upper_{window}'] = bb_mean + (2 * bb_std)
+            df[f'bb_lower_{window}'] = bb_mean - (2 * bb_std)
+            df[f'bb_width_{window}'] = (df[f'bb_upper_{window}'] - df[f'bb_lower_{window}']) / bb_mean
+            df[f'bb_position_{window}'] = (df['close'] - df[f'bb_lower_{window}']) / (df[f'bb_upper_{window}'] - df[f'bb_lower_{window}'])
 
-        # VWAP distance (approximated from OHLC)
-        df['vwap_dist'] = self._compute_vwap_distance(df)
+        return df
+
+    def _add_stochastic_oscillator(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add Stochastic Oscillator features."""
+        for window in self.rolling_windows.get('stoch', [14]):
+            lowest_low = df['low'].rolling(window=window).min()
+            highest_high = df['high'].rolling(window=window).max()
+            
+            df[f'stoch_k_{window}'] = 100 * (df['close'] - lowest_low) / (highest_high - lowest_low)
+            df[f'stoch_d_{window}'] = df[f'stoch_k_{window}'].rolling(window=3).mean()
+
+        return df
+
+    def _add_williams_r(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add Williams %R features."""
+        for window in self.rolling_windows.get('williams_r', [14]):
+            highest_high = df['high'].rolling(window=window).max()
+            lowest_low = df['low'].rolling(window=window).min()
+            
+            df[f'williams_r_{window}'] = -100 * (highest_high - df['close']) / (highest_high - lowest_low)
+
+        return df
+
+    def _add_cci(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add Commodity Channel Index features."""
+        for window in self.rolling_windows.get('cci', [20]):
+            typical_price = (df['high'] + df['low'] + df['close']) / 3
+            sma = typical_price.rolling(window=window).mean()
+            mad = typical_price.rolling(window=window).apply(lambda x: np.mean(np.abs(x - x.mean())))
+            
+            df[f'cci_{window}'] = (typical_price - sma) / (0.015 * mad)
 
         return df
 
     @log_performance()
-    def compute_volatility_risk_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _compute_volatility_risk_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute volatility and risk features."""
-        self.logger.debug("Computing volatility and risk features")
+        logger.debug("Computing volatility and risk features")
 
-        # Rolling volatility (properly scaled for intraday)
-        for window in self.rolling_windows.get('volatility', [20, 50]):
-            # Use log returns for better statistical properties
-            log_returns = np.log(df['close'] / df['close'].shift(1))
-            rolling_std = log_returns.rolling(window=window, min_periods=window).std()
+        df = self._add_atr_features(df)
+        df = self._add_volatility_features(df)
+        df = self._add_risk_metrics(df)
 
-            # Scale to annualized volatility (1-minute bars)
-            df[f'vol_{window}'] = rolling_std * np.sqrt(self.bars_per_day * 365)
+        return df
 
-        # ATR (Average True Range)
+    def _add_atr_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add Average True Range features."""
         for window in self.rolling_windows.get('atr', [14]):
             df[f'atr_{window}'] = self._compute_atr(df, window)
+            df[f'atr_pct_{window}'] = df[f'atr_{window}'] / df['close']
 
-        # Realized volatility (rolling)
-        for window in [30]:
-            log_returns = np.log(df['close'] / df['close'].shift(1))
-            rolling_std = log_returns.rolling(window=window, min_periods=window).std()
-            df[f'realized_vol_{window}'] = rolling_std * np.sqrt(self.bars_per_day * 365)
+        return df
 
-        # Volatility percentile (properly scaled for intraday)
-        vol_window = 20
-        vol_period = int(self.bars_per_quarter / self.bars_per_day * 90)  # 90 days in bars
+    def _add_volatility_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add volatility features."""
+        for window in self.rolling_windows.get('volatility', [20, 60]):
+            returns = df['close'].pct_change()
+            df[f'volatility_{window}'] = returns.rolling(window=window).std()
+            df[f'volatility_annualized_{window}'] = df[f'volatility_{window}'] * np.sqrt(self.bars_per_day * 365)
 
-        if vol_period > vol_window:
-            df['vol_percentile_90d'] = self._compute_rolling_percentile(
-                df[f'vol_{vol_window}'], vol_period, vol_window
-            )
+        return df
 
-        # Downside volatility (only negative returns)
-        for window in [30]:
-            log_returns = np.log(df['close'] / df['close'].shift(1))
-            negative_returns = log_returns.where(log_returns < 0, 0)
-            downside_vol = negative_returns.rolling(window=window, min_periods=window).std()
-            df[f'downside_vol_{window}'] = downside_vol * np.sqrt(self.bars_per_day * 365)
+    def _add_risk_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add risk metrics."""
+        for window in self.rolling_windows.get('risk', [20]):
+            returns = df['close'].pct_change()
+            df[f'var_95_{window}'] = returns.rolling(window=window).quantile(0.05)
+            df[f'var_99_{window}'] = returns.rolling(window=window).quantile(0.01)
 
         return df
 
     @log_performance()
-    def compute_volume_liquidity_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _compute_volume_liquidity_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute volume and liquidity features."""
-        self.logger.debug("Computing volume and liquidity features")
+        logger.debug("Computing volume and liquidity features")
 
-        # Volume moving averages
-        for window in self.rolling_windows.get('volume', [20, 50]):
-            df[f'vol_ma_{window}'] = df['volume'].rolling(window=window, min_periods=window).mean()
+        df = self._add_volume_features(df)
+        df = self._add_liquidity_features(df)
+        df = self._add_volume_price_features(df)
 
-        # Volume z-score
-        for window in [20]:
-            vol_ma = df['volume'].rolling(window=window, min_periods=window).mean()
-            vol_std = df['volume'].rolling(window=window, min_periods=window).std()
-            df[f'vol_zscore_{window}'] = (df['volume'] - vol_ma) / vol_std
+        return df
 
-        # Volume spike detection
-        multiplier = self.thresholds.get('volume_spike_multiplier', 2.0)
-        for window in [20]:
-            vol_ma = df['volume'].rolling(window=window, min_periods=window).mean()
-            df[f'volume_spike_flag_{window}'] = (df['volume'] > multiplier * vol_ma).astype(int)
-            # Also create the generic name for backward compatibility
-            if window == 20:
-                df['volume_spike_flag'] = df[f'volume_spike_flag_{window}']
+    def _add_volume_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add basic volume features."""
+        for window in self.rolling_windows.get('volume', [20, 60]):
+            df[f'volume_ma_{window}'] = df['volume'].rolling(window=window).mean()
+            df[f'volume_std_{window}'] = df['volume'].rolling(window=window).std()
 
-        # Notional volume (price × volume)
-        df['notional_volume'] = df['close'] * df['volume']
+        return df
 
-        # Notional share (fraction of total turnover)
-        for window in [60]:
-            total_notional = df['notional_volume'].rolling(window=window, min_periods=window).sum()
-            df[f'notional_share_{window}'] = df['notional_volume'] / total_notional
-            # Also create the generic name for backward compatibility
-            if window == 60:
-                df['notional_share'] = df[f'notional_share_{window}']
+    def _add_liquidity_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add liquidity features."""
+        volume_spike_multiplier = self.thresholds.get('volume_spike_multiplier', 2.0)
+        
+        for window in self.rolling_windows.get('volume', [20]):
+            volume_ma = df['volume'].rolling(window=window).mean()
+            df[f'volume_spike_{window}'] = (df['volume'] > volume_ma * volume_spike_multiplier).astype(int)
+
+        return df
+
+    def _add_volume_price_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add volume-price relationship features."""
+        df['volume_price_trend'] = (df['volume'] * df['close']).pct_change()
+        df['volume_weighted_price'] = (df['volume'] * df['close']).rolling(window=20).sum() / df['volume'].rolling(window=20).sum()
 
         return df
 
     @log_performance()
-    def compute_microstructure_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute microstructure proxy features."""
-        self.logger.debug("Computing microstructure features")
+    def _compute_microstructure_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute market microstructure features."""
+        logger.debug("Computing microstructure features")
 
-        # High-low spread
-        df['hl_spread'] = (df['high'] - df['low']) / df['close']
+        df = self._add_spread_features(df)
+        df = self._add_impact_features(df)
+        df = self._add_efficiency_features(df)
 
-        # Open-close spread
-        df['oc_spread'] = abs(df['open'] - df['close']) / df['close']
+        return df
 
-        # Kyle lambda proxy (using notional volume for better accuracy)
-        df['kyle_lambda_proxy'] = abs(df['log_ret_1m']) / df['notional_volume']
+    def _add_spread_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add spread-related features."""
+        df['bid_ask_spread'] = (df['high'] - df['low']) / df['close']
+        df['spread_pct'] = df['bid_ask_spread'] / df['close']
 
-        # Roll measure proxy (negative autocovariance at lag 1)
-        df['roll_measure_proxy'] = self._compute_roll_measure(df['log_ret_1m'])
+        return df
+
+    def _add_impact_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add market impact features."""
+        df['price_impact'] = abs(df['close'].pct_change()) / df['volume'].pct_change()
+        df['volume_impact'] = df['volume'].pct_change() / df['close'].pct_change()
+
+        return df
+
+    def _add_efficiency_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add market efficiency features."""
+        for window in self.rolling_windows.get('efficiency', [20]):
+            returns = df['close'].pct_change()
+            df[f'efficiency_ratio_{window}'] = returns.rolling(window=window).mean() / returns.rolling(window=window).std()
 
         return df
 
     @log_performance()
-    def compute_regime_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute market regime classification features."""
-        self.logger.debug("Computing regime features")
+    def _compute_regime_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute market regime features."""
+        logger.debug("Computing regime features")
 
-        # Trend regime score (using rolling normalization to prevent leakage)
-        df['trend_regime_score'] = self._compute_trend_regime_score(df)
+        df = self._add_volatility_regime(df)
+        df = self._add_trend_regime(df)
+        df = self._add_liquidity_regime(df)
 
-        # Volatility regime flag
-        vol_percentile = self.thresholds.get('volatility_regime_percentile', 0.80)
-        df['vol_regime_flag'] = (df['vol_percentile_90d'] > vol_percentile).astype(int)
+        return df
 
-        # Liquidity regime flag
-        df['liquidity_regime_flag'] = self._compute_liquidity_regime_flag(df)
+    def _add_volatility_regime(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add volatility regime features."""
+        volatility_percentile = self.thresholds.get('volatility_regime_percentile', 80)
+        
+        for window in self.rolling_windows.get('volatility', [20]):
+            volatility = df['close'].pct_change().rolling(window=window).std()
+            threshold = volatility.quantile(volatility_percentile / 100)
+            df[f'high_volatility_{window}'] = (volatility > threshold).astype(int)
+
+        return df
+
+    def _add_trend_regime(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add trend regime features."""
+        for window in self.rolling_windows.get('trend', [20, 50]):
+            ma = df['close'].rolling(window=window).mean()
+            df[f'trend_up_{window}'] = (df['close'] > ma).astype(int)
+            df[f'trend_strength_{window}'] = abs(df['close'] - ma) / ma
+
+        return df
+
+    def _add_liquidity_regime(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add liquidity regime features."""
+        for window in self.rolling_windows.get('liquidity', [20]):
+            volume_ma = df['volume'].rolling(window=window).mean()
+            df[f'high_liquidity_{window}'] = (df['volume'] > volume_ma).astype(int)
 
         return df
 
     @log_performance()
-    def compute_risk_execution_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute risk and execution helper features."""
-        self.logger.debug("Computing risk and execution features")
+    def _compute_risk_execution_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute risk and execution features."""
+        logger.debug("Computing risk and execution features")
 
-        # Position cap hint based on volatility and beta
-        df['position_cap_hint'] = self._compute_position_cap_hint(df)
+        df = self._add_stop_loss_features(df)
+        df = self._add_position_sizing_features(df)
+        df = self._add_risk_adjustment_features(df)
 
-        # Stop distance hint based on ATR
-        atr_multiplier = self.thresholds.get('stop_atr_multiplier', 2.0)
-        df['stop_distance_hint'] = atr_multiplier * df['atr_14']
+        return df
 
-        # Slippage hint based on spread and volatility
-        df['slippage_hint_bps'] = self._compute_slippage_hint(df)
+    def _add_stop_loss_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add stop loss features."""
+        stop_atr_multiplier = self.thresholds.get('stop_atr_multiplier', 2.0)
+        
+        for window in self.rolling_windows.get('atr', [14]):
+            atr = df[f'atr_{window}']
+            df[f'stop_loss_long_{window}'] = df['close'] - (atr * stop_atr_multiplier)
+            df[f'stop_loss_short_{window}'] = df['close'] + (atr * stop_atr_multiplier)
+
+        return df
+
+    def _add_position_sizing_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add position sizing features."""
+        for window in self.rolling_windows.get('risk', [20]):
+            volatility = df['close'].pct_change().rolling(window=window).std()
+            df[f'position_size_{window}'] = 1 / (volatility * np.sqrt(self.bars_per_day))
+
+        return df
+
+    def _add_risk_adjustment_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add risk adjustment features."""
+        for window in self.rolling_windows.get('risk', [20]):
+            returns = df['close'].pct_change()
+            sharpe = returns.rolling(window=window).mean() / returns.rolling(window=window).std()
+            df[f'risk_adjusted_return_{window}'] = returns * sharpe
 
         return df
 
     @log_performance()
-    def compute_cross_asset_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute cross-asset relationship features."""
-        self.logger.debug("Computing cross-asset features")
+    def _compute_cross_asset_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute cross-asset features."""
+        logger.debug("Computing cross-asset features")
 
-        driver_symbol = self.cross_assets.get('driver_symbol', 'BTCUSDT')
-        pairs = self.cross_assets.get('pairs', [])
-
-        if driver_symbol not in df['symbol'].values:
-            self.logger.warning(f"Driver symbol {driver_symbol} not found in data")
+        if not self.cross_assets.get('enabled', False):
             return df
 
-        # Get driver data
-        driver_data = df[df['symbol'] == driver_symbol].copy()
-        driver_data = driver_data.drop_duplicates(subset=['ts']).reset_index(drop=True)
-
-        # Compute features for each pair
-        for symbol in pairs:
-            if symbol not in df['symbol'].values:
-                continue
-
-            try:
-                symbol_data = df[df['symbol'] == symbol].copy()
-                symbol_data = symbol_data.drop_duplicates(subset=['ts']).reset_index(drop=True)
-
-                # Merge with driver data
-                merged_data = pd.merge(
-                    symbol_data,
-                    driver_data[['ts', 'close', 'ret_1m']],
-                    on='ts',
-                    suffixes=('', '_driver')
-                )
-
-                if merged_data.empty:
-                    continue
-
-                # Compute pair-specific features
-                pair_features = self._compute_pair_specific_features(merged_data, symbol, driver_symbol)
-
-                # Update original DataFrame
-                for feature_name, feature_values in pair_features.items():
-                    df.loc[df['symbol'] == symbol, feature_name] = feature_values
-
-            except Exception as e:
-                self.logger.error(f"Error computing pair features for {symbol}: {e}")
-                continue
+        # This would require additional data sources
+        # For now, we'll add placeholder features
+        df['cross_asset_correlation'] = 0.0
+        df['cross_asset_momentum'] = 0.0
 
         return df
-
-    def _compute_pair_specific_features(self, merged_data: pd.DataFrame, symbol: str, driver_symbol: str) -> dict[str, pd.Series]:
-        """Compute features specific to a symbol-driver pair."""
-        features = {}
-
-        # Driver returns
-        features[f'{driver_symbol.lower()}_ret_1m'] = merged_data['ret_1m_driver']
-
-        # Relative returns
-        features[f'{symbol.lower()}_minus_{driver_symbol.lower()}_ret'] = (
-            merged_data['ret_1m'] - merged_data['ret_1m_driver']
-        )
-
-        # Price ratio
-        features[f'ratio_{symbol.lower()}_{driver_symbol.lower()}'] = (
-            merged_data['close'] / merged_data['close_driver']
-        )
-
-        # Ratio z-score
-        ratio = features[f'ratio_{symbol.lower()}_{driver_symbol.lower()}']
-        for window in [240]:  # 4 hours
-            ratio_ma = ratio.rolling(window=window, min_periods=window).mean()
-            ratio_std = ratio.rolling(window=window, min_periods=window).std()
-            features[f'ratio_{symbol.lower()}_{driver_symbol.lower()}_zscore_{window}'] = (
-                (ratio - ratio_ma) / ratio_std
-            )
-
-        # Beta to driver
-        for window in [720]:  # 12 hours
-            beta = self._compute_beta_to_driver(
-                merged_data['ret_1m'],
-                merged_data['ret_1m_driver'],
-                window
-            )
-            features[f'beta_to_{driver_symbol.lower()}_{window}'] = beta
-
-        return features
-
-    def _compute_beta_to_driver(self, returns: pd.Series, driver_returns: pd.Series, window: int) -> pd.Series:
-        """Compute rolling beta to driver asset."""
-        def rolling_beta(x):
-            if len(x) < 2:
-                return np.nan
-
-            y = x['returns'].values
-            x_driver = x['driver_returns'].values
-
-            # Remove NaN values
-            mask = ~(np.isnan(y) | np.isnan(x_driver))
-            if np.sum(mask) < 2:
-                return np.nan
-
-            y_clean = y[mask]
-            x_clean = x_driver[mask]
-
-            try:
-                # Add constant for regression
-                X = np.column_stack([np.ones(len(x_clean)), x_clean])
-                beta = np.linalg.lstsq(X, y_clean, rcond=None)[0][1]
-                return beta
-            except Exception:
-                return np.nan
-
-        # Create rolling window data
-        rolling_data = pd.DataFrame({
-            'returns': returns,
-            'driver_returns': driver_returns
-        }).rolling(window=window, min_periods=window)
-
-        # Apply rolling beta calculation
-        beta_series = rolling_data.apply(rolling_beta, raw=False)
-
-        return beta_series
-
-    def _compute_rolling_slope(self, series: pd.Series, window: int) -> pd.Series:
-        """Compute rolling linear regression slope."""
-        def slope(x):
-            if len(x) < 2:
-                return np.nan
-
-            y = x.values
-            x_vals = np.arange(len(y))
-
-            try:
-                slope_val = np.polyfit(x_vals, y, 1)[0]
-                return slope_val
-            except Exception:
-                return np.nan
-
-        return series.rolling(window=window, min_periods=window).apply(slope, raw=False)
-
-    def _compute_rsi_wilders(self, series: pd.Series, window: int) -> pd.Series:
-        """Compute RSI using Wilder's smoothing (industry standard)."""
-        # Calculate price changes
-        delta = series.diff()
-
-        # Separate gains and losses
-        gains = delta.where(delta > 0, 0)
-        losses = -delta.where(delta < 0, 0)
-
-        # Initial average gain and loss
-        avg_gain = gains.rolling(window=window, min_periods=window).mean()
-        avg_loss = losses.rolling(window=window, min_periods=window).mean()
-
-        # Apply Wilder's smoothing
-        for i in range(window, len(series)):
-            if i == window:
-                continue
-
-            avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (window - 1) + gains.iloc[i]) / window
-            avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (window - 1) + losses.iloc[i]) / window
-
-        # Calculate RS and RSI
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-
-        return rsi
-
-    def _detect_intraday_reversals(self, df: pd.DataFrame, threshold: float) -> pd.Series:
-        """Detect intraday reversal patterns."""
-        # Look for 1-minute moves that oppose recent trend
-        lookback = 5  # Look back 5 minutes
-
-        # Recent trend
-        recent_trend = df['ret_1m'].rolling(lookback).sum()
-
-        # Current move
-        current_move = df['ret_1m']
-
-        # Reversal condition: current move opposes recent trend and exceeds threshold
-        reversal = (
-            (current_move * recent_trend < 0) &  # Opposite direction
-            (abs(current_move) > threshold)      # Exceeds threshold
-        )
-
-        return reversal.astype(int)
-
-    def _compute_vwap_distance(self, df: pd.DataFrame) -> pd.Series:
-        """Compute distance from VWAP (approximated from OHLC)."""
-        # Approximate VWAP as (H+L+C)/3
-        vwap = (df['high'] + df['low'] + df['close']) / 3
-
-        # Distance from VWAP
-        vwap_dist = (df['close'] - vwap) / vwap
-
-        return vwap_dist
-
-    def _compute_roll_measure(self, returns: pd.Series) -> pd.Series:
-        """Compute Roll measure proxy (negative autocovariance at lag 1)."""
-        def rolling_roll_measure(x):
-            if len(x) < 2:
-                return np.nan
-
-            try:
-                # Compute autocovariance at lag 1
-                autocov = np.cov(x[:-1], x[1:])[0, 1]
-                return -autocov
-            except Exception:
-                return np.nan
-
-        return returns.rolling(window=20, min_periods=20).apply(rolling_roll_measure, raw=False)
-
-    def _compute_trend_regime_score(self, df: pd.DataFrame) -> pd.Series:
-        """Compute trend regime score using rolling normalization."""
-        # Combine trend indicators
-        trend_indicators = []
-
-        # Trend slope (normalized)
-        if 'trend_slope_20' in df.columns:
-            slope = df['trend_slope_20']
-            # Use rolling z-score to prevent leakage
-            lookback = self.trend_regime_config.get('lookback_periods', 240)
-            min_periods = self.trend_regime_config.get('min_periods', 120)
-
-            slope_normalized = self._rolling_zscore_normalize(slope, lookback, min_periods)
-            trend_indicators.append(slope_normalized)
-
-        # Breakout indicator
-        if 'breakout_20' in df.columns:
-            trend_indicators.append(df['breakout_20'])
-
-        # EMA trend
-        if 'ema_20' in df.columns and 'ema_50' in df.columns:
-            ema_trend = (df['ema_20'] > df['ema_50']).astype(float)
-            trend_indicators.append(ema_trend)
-
-        if not trend_indicators:
-            return pd.Series(0.5, index=df.index)
-
-        # Combine indicators (equal weight)
-        combined = pd.concat(trend_indicators, axis=1).mean(axis=1)
-
-        # Scale to [0, 1] range
-        trend_score = (combined + 1) / 2
-
-        return trend_score.fillna(0.5)
-
-    def _rolling_zscore_normalize(self, series: pd.Series, lookback: int, min_periods: int) -> pd.Series:
-        """Normalize series using rolling z-score to prevent leakage."""
-        rolling_mean = series.rolling(window=lookback, min_periods=min_periods).mean()
-        rolling_std = series.rolling(window=lookback, min_periods=min_periods).std()
-
-        normalized = (series - rolling_mean) / rolling_std
-
-        # Clip extreme values
-        normalized = normalized.clip(-3, 3)
-
-        return normalized
-
-    def _compute_liquidity_regime_flag(self, df: pd.DataFrame) -> pd.Series:
-        """Compute liquidity regime flag."""
-        # Thin market: low volume relative to recent average
-        thin_market = df['vol_zscore_20'] < -1
-
-        # High notional share: large orders relative to turnover
-        high_share = df['notional_share_60'] > 0.01  # 1% of turnover
-
-        # Liquidity regime: thin market OR high notional share
-        liquidity_regime = (thin_market | high_share).astype(int)
-
-        return liquidity_regime
-
-    def _compute_position_cap_hint(self, df: pd.DataFrame) -> pd.Series:
-        """Compute position cap hint based on volatility and beta."""
-        # Base cap
-        base_cap = 1.0
-
-        # Reduce cap in high volatility
-        if 'vol_regime_flag' in df.columns:
-            vol_adjustment = np.where(df['vol_regime_flag'] == 1, 0.5, 1.0)
-        else:
-            vol_adjustment = 1.0
-
-        # Reduce cap for high beta assets
-        if 'beta_to_btc_720' in df.columns:
-            beta = df['beta_to_btc_720'].abs()
-            beta_adjustment = np.where(beta > 2, 0.5, np.where(beta > 1, 0.75, 1.0))
-        else:
-            beta_adjustment = 1.0
-
-        # Reduce cap in low liquidity
-        if 'liquidity_regime_flag' in df.columns:
-            liquidity_adjustment = np.where(df['liquidity_regime_flag'] == 1, 0.7, 1.0)
-        else:
-            liquidity_adjustment = 1.0
-
-        # Combine adjustments
-        position_cap = base_cap * vol_adjustment * beta_adjustment * liquidity_adjustment
-
-        return position_cap
-
-    def _compute_slippage_hint(self, df: pd.DataFrame) -> pd.Series:
-        """Compute slippage hint in basis points."""
-        # Base slippage
-        base_slippage_bps = 10
-
-        # Adjust for spread
-        if 'hl_spread' in df.columns:
-            median_spread = df['hl_spread'].rolling(240).median()
-            spread_adjustment = df['hl_spread'] / median_spread
-        else:
-            spread_adjustment = 1.0
-
-        # Adjust for volatility
-        if 'vol_20' in df.columns:
-            median_vol = df['vol_20'].rolling(240).median()
-            vol_adjustment = df['vol_20'] / median_vol
-        else:
-            vol_adjustment = 1.0
-
-        # Compute final slippage
-        slippage_bps = base_slippage_bps * spread_adjustment * vol_adjustment
-
-        # Clip to reasonable range
-        slippage_bps = slippage_bps.clip(1, 100)
-
-        return slippage_bps
-
-    def _compute_vwap_distance(self, df: pd.DataFrame) -> pd.Series:
-        """Compute VWAP distance (approximated from OHLC)."""
-        # Approximate VWAP using OHLC
-        vwap = (df['high'] + df['low'] + df['close']) / 3
-        vwap_dist = (df['close'] - vwap) / vwap
-        return vwap_dist
-
-    def _compute_atr(self, df: pd.DataFrame, period: int) -> pd.Series:
-        """Compute Average True Range."""
-        high_low = df['high'] - df['low']
-        high_close = np.abs(df['high'] - df['close'].shift(1))
-        low_close = np.abs(df['low'] - df['close'].shift(1))
-
-        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        atr = true_range.rolling(window=period, min_periods=period).mean()
-
-        return atr
-
-    def _compute_roll_measure(self, returns: pd.Series) -> pd.Series:
-        """Compute Roll measure proxy (negative autocovariance at lag 1)."""
-        def rolling_autocovariance(x):
-            if len(x) < 2:
-                return np.nan
-            return -np.cov(x[:-1], x[1:])[0, 1]
-
-        return returns.rolling(window=20, min_periods=20).apply(rolling_autocovariance, raw=False)
-
-    def _compute_rolling_percentile(self, series: pd.Series, lookback: int, min_periods: int) -> pd.Series:
-        """Compute rolling percentile rank."""
-        def rolling_percentile(x):
-            """Calculate rolling percentile for a series."""
-            if len(x) < lookback:
-                return np.nan  # Return NaN for insufficient data
-            
-            current_value = x.iloc[-1]
-            historical_values = x.iloc[:-1]
-
-            if len(historical_values) == 0:
-                return np.nan  # Return NaN instead of hardcoded 0.5
-
-            percentile = (historical_values < current_value).mean()
-            return percentile
-
-        return series.rolling(window=lookback, min_periods=min_periods).apply(rolling_percentile, raw=False)
 
     def _apply_winsorization(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply winsorization to numeric features."""
-        method = self.winsorization_config.get('method', 'quantile')
-        lower_limit = self.winsorization_config.get('lower_limit', 0.01)
-        upper_limit = self.winsorization_config.get('upper_limit', 0.99)
-        apply_per_symbol = self.winsorization_config.get('apply_per_symbol', True)
+        """Apply winsorization to extreme values."""
+        if not self.winsorization_config.get('enabled', False):
+            return df
 
-        # Get numeric columns (excluding metadata and categorical)
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        feature_columns = [col for col in numeric_columns if col not in ['ts', 'symbol']]
-
-        if apply_per_symbol:
-            # Apply winsorization per symbol
-            for symbol in df['symbol'].unique():
-                symbol_mask = df['symbol'] == symbol
-                symbol_data = df.loc[symbol_mask, feature_columns]
-
-                if method == 'quantile':
-                    lower_bounds = symbol_data.quantile(lower_limit)
-                    upper_bounds = symbol_data.quantile(upper_limit)
-
-                    for col in feature_columns:
-                        # Explicitly convert to match dtype to avoid FutureWarning
-                        clipped_values = symbol_data[col].clip(
-                            lower=lower_bounds[col],
-                            upper=upper_bounds[col]
-                        ).astype(df[col].dtype)
-                        df.loc[symbol_mask, col] = clipped_values
-        else:
-            # Apply winsorization globally
-            if method == 'quantile':
-                lower_bounds = df[feature_columns].quantile(lower_limit)
-                upper_bounds = df[feature_columns].quantile(upper_limit)
-
-                for col in feature_columns:
-                    # Explicitly convert to match dtype to avoid FutureWarning
-                    df[col] = df[col].clip(lower=lower_bounds[col], upper=upper_bounds[col]).astype(df[col].dtype)
+        percentile = self.winsorization_config.get('percentile', 1.0)
+        
+        for col in df.select_dtypes(include=[np.number]).columns:
+            if col in ['ts', 'symbol']:
+                continue
+                
+            lower_bound = df[col].quantile(percentile / 100)
+            upper_bound = df[col].quantile(1 - percentile / 100)
+            
+            df[col] = df[col].clip(lower=lower_bound, upper=upper_bound)
 
         return df
-
-    def apply_winsorization(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Apply winsorization to features (public interface)."""
-        return self._apply_winsorization(df)
-
-    def add_metadata_columns(self, df: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
-        """Add metadata columns (public interface)."""
-        if symbol:
-            df['symbol'] = symbol
-        return self._add_metadata(df)
 
     def _add_metadata(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add metadata columns."""
-        # Source
-        df['source'] = 'binance'
-
-        # Load ID
-        df['load_id'] = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-        # Ingestion timestamp
-        df['ingestion_ts'] = get_utc_now().isoformat()
-
-        # Date partition column
-        df['date'] = pd.to_datetime(df['ts']).dt.date.astype(str)
-
+        df['feature_computed_at'] = get_utc_now()
+        df['feature_version'] = '1.0.0'
+        df['config_hash'] = str(hash(str(self.config)))
+        
         return df
 
-    def _run_quality_control(self, df: pd.DataFrame) -> None:
+    def _run_quality_control(self, df: pd.DataFrame) -> pd.DataFrame:
         """Run quality control checks."""
-        self.logger.info("Running quality control checks")
+        if not self.qc_config.get('enabled', False):
+            return df
 
-        # Check for NaN values
-        nan_counts = df.isnull().sum()
-        high_nan_features = nan_counts[nan_counts > 0]
+        self._check_data_quality(df)
+        return df
 
-        if not high_nan_features.empty:
-            self.logger.warning(f"Features with NaN values: {high_nan_features.to_dict()}")
+    def _check_data_quality(self, df: pd.DataFrame) -> None:
+        """Check data quality metrics."""
+        # Check for missing values
+        missing_counts = df.isnull().sum()
+        if missing_counts.sum() > 0:
+            logger.warning(f"Missing values detected: {missing_counts[missing_counts > 0]}")
 
-        # Check feature ranges
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        feature_columns = [col for col in numeric_columns if col not in ['ts', 'symbol', 'date']]
+        # Check for infinite values
+        inf_counts = np.isinf(df.select_dtypes(include=[np.number])).sum()
+        if inf_counts.sum() > 0:
+            logger.warning(f"Infinite values detected: {inf_counts[inf_counts > 0]}")
 
-        for col in feature_columns:
-            if col in df.columns:
-                min_val = df[col].min()
-                max_val = df[col].max()
+        # Check for extreme values
+        for col in df.select_dtypes(include=[np.number]).columns:
+            if col in ['ts', 'symbol']:
+                continue
+                
+            q99 = df[col].quantile(0.99)
+            q01 = df[col].quantile(0.01)
+            
+            extreme_count = ((df[col] > q99) | (df[col] < q01)).sum()
+            if extreme_count > 0:
+                logger.warning(f"Extreme values in {col}: {extreme_count}")
 
-                # Check for extreme values
-                if abs(min_val) > 1e6 or abs(max_val) > 1e6:
-                    self.logger.warning(f"Feature {col} has extreme values: [{min_val}, {max_val}]")
+    def _compute_rolling_slope(self, series: pd.Series, window: int) -> pd.Series:
+        """Compute rolling slope using linear regression."""
+        def slope(x):
+            if len(x) < 2:
+                return np.nan
+            return np.polyfit(range(len(x)), x, 1)[0]
+        
+        return series.rolling(window=window).apply(slope)
 
-        # Check timestamp monotonicity
-        for symbol in df['symbol'].unique():
-            symbol_data = df[df['symbol'] == symbol].sort_values('ts')
-            if not symbol_data['ts'].is_monotonic_increasing:
-                self.logger.error(f"Timestamps not monotonic for symbol {symbol}")
+    def _compute_rsi_wilders(self, series: pd.Series, window: int) -> pd.Series:
+        """Compute RSI using Wilder's smoothing method."""
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+        
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        return rsi
 
-        self.logger.info("Quality control completed")
+    def _compute_atr(self, df: pd.DataFrame, window: int) -> pd.Series:
+        """Compute Average True Range."""
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        
+        true_range = np.maximum(high_low, np.maximum(high_close, low_close))
+        atr = true_range.rolling(window=window).mean()
+        
+        return atr
 
-    @log_performance()
-    def save_features(self, df: pd.DataFrame, output_path: str = None) -> str:
-        """
-        Save features to partitioned Parquet dataset.
-
-        Args:
-            df: DataFrame with features
-            output_path: Output path (uses config if not specified)
-
-        Returns:
-            Path to saved features
-        """
-        if output_path is None:
-            output_path = self.output_config.get('path', 'data/features/features_1m.parquet')
-
-        # Ensure output directory exists
+    def save_features(self, df: pd.DataFrame, output_path: str) -> None:
+        """Save computed features to partitioned Parquet files."""
         output_dir = Path(output_path)
-        ensure_directory(output_dir.parent)
+        ensure_directory(output_dir)
 
-        # Get partition columns
-        partition_by = self.output_config.get('partition_by', ['symbol', 'date'])
+        # Partition by symbol and date
+        df['date'] = pd.to_datetime(df['ts']).dt.date
+        
+        for symbol in df['symbol'].unique():
+            symbol_data = df[df['symbol'] == symbol]
+            
+            for date in symbol_data['date'].unique():
+                date_data = symbol_data[symbol_data['date'] == date]
+                
+                # Create partition directory
+                partition_dir = output_dir / f"symbol={symbol}" / f"date={date}"
+                partition_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Save partition
+                partition_file = partition_dir / f"{symbol}_{date}.parquet"
+                date_data.to_parquet(partition_file, index=False)
+                
+                logger.debug(f"Saved partition: {partition_file}")
 
-        # Save as partitioned Parquet
-        df.to_parquet(
-            output_path,
-            partition_cols=partition_by,
-            compression=self.output_config.get('compression', 'snappy'),
-            index=False
-        )
+        logger.info(f"Features saved to {output_dir}")
 
-        self.logger.info(f"Features saved to: {output_path}")
-        return output_path
+    def get_feature_summary(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Get summary of computed features."""
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        summary = {
+            'total_rows': len(df),
+            'total_symbols': df['symbol'].nunique(),
+            'feature_columns': len(numeric_cols),
+            'missing_values': df.isnull().sum().to_dict(),
+            'feature_ranges': {}
+        }
+        
+        for col in numeric_cols:
+            if col in ['ts', 'symbol']:
+                continue
+                
+            summary['feature_ranges'][col] = {
+                'min': df[col].min(),
+                'max': df[col].max(),
+                'mean': df[col].mean(),
+                'std': df[col].std()
+            }
+        
+        return summary

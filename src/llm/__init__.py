@@ -1,35 +1,40 @@
-"""LLM Module for Algo-Trading System.
+"""LLM Module - Pluggable Large Language Model Interface."""
 
-This module provides a pluggable interface for Large Language Models
-to act as trading orchestrators and advisors.
-"""
-
+# Core classes and interfaces
 from .backends.base import (
-    LLMClient, LLMResult, LLMChunk, LLMHealth,
-    LLMError, LLMConfigError, LLMConnectionError,
-    LLMRateLimitError, LLMTimeoutError, LLMParsingError, LLMUnknownError
+    LLMClient,
+    LLMResult,
+    LLMChunk,
+    LLMHealth,
+    LLMConfigError,
+    LLMConnectionError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMParsingError,
+    LLMUnknownError
 )
 
+# Backend implementations
+from .backends.local_llama import LocalLlamaClient
+
+# Runtime utilities
 from .runtime.loader import (
     get_llm_client,
-    list_available_backends,
-    get_backend_info,
     healthcheck_all_backends
 )
 
-from .backends.local_llama import LocalLlamaClient
-
+# Version
 __version__ = "1.0.0"
 
+# Public API
 __all__ = [
-    # Core interfaces
+    # Core classes
     "LLMClient",
     "LLMResult", 
     "LLMChunk",
     "LLMHealth",
     
     # Error types
-    "LLMError",
     "LLMConfigError",
     "LLMConnectionError", 
     "LLMRateLimitError",
@@ -37,12 +42,10 @@ __all__ = [
     "LLMParsingError",
     "LLMUnknownError",
     
-    # Runtime utilities
-    "get_llm_client",
-    "list_available_backends",
-    "get_backend_info", 
-    "healthcheck_all_backends",
-    
-    # Backend implementations
+    # Backends
     "LocalLlamaClient",
+    
+    # Runtime
+    "get_llm_client",
+    "healthcheck_all_backends",
 ]
