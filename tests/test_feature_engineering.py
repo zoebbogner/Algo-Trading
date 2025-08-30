@@ -201,7 +201,7 @@ class TestFeatureEngineering(unittest.TestCase):
         empty_df = pd.DataFrame(columns=self.sample_data.columns)
         with self.assertRaises(Exception):
             df = self.feature_engineer.compute_all_features(empty_df)
-        
+
         # Test with single row
         single_row = self.sample_data.iloc[:1].copy()
         df = self.feature_engineer.compute_all_features(single_row)

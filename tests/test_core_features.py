@@ -13,7 +13,7 @@ from src.config.features import load_config as load_features_config
 
 class TestCoreFeatures(unittest.TestCase):
     """Test core feature engineering functionality."""
-
+    
     def setUp(self):
         """Set up test fixtures."""
         self.config = load_features_config()

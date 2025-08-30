@@ -867,7 +867,7 @@ def generate_dashboard_html(include_tests=True, include_backtests=True):
                 background: #f8f9fa;
             }}
             
-            .bt-cell-strategy {{
+            .bt-cell-symbol {{
                 font-weight: 600;
                 color: #2c3e50;
             }}
@@ -952,7 +952,15 @@ def generate_dashboard_html(include_tests=True, include_backtests=True):
                 </div>
 
                 <!-- Quick Actions -->
-
+                <div class="card">
+                    <h3>Quick Actions</h3>
+                    <div class="actions">
+                        <button onclick="runTests()" class="action-btn">🧪 Run Tests</button>
+                        <button onclick="runBacktest()" class="action-btn">📊 Run Backtest</button>
+                        <button onclick="collectData()" class="action-btn">📥 Collect Data</button>
+                        <button onclick="generateFeatures()" class="action-btn">⚡ Generate Features</button>
+                    </div>
+                </div>
             </div>
 
             <button class="refresh-button" onclick="location.reload()">🔄 Refresh Dashboard</button>
@@ -1277,7 +1285,7 @@ def get_backtest_results() -> dict:
                             if i < 5:
                                 recent_performance_html += f"""
                                 <div class="backtest-table-row">
-                                    <span class="bt-cell-strategy">{symbol}</span>
+                                    <span class="bt-cell-symbol">{symbol}</span>
                                     <span class="bt-cell-return">{total_return:.1%}</span>
                                     <span class="bt-cell-sharpe">{sharpe_ratio:.2f}</span>
                                     <span class="bt-cell-date">{date_str}</span>
@@ -1308,7 +1316,7 @@ def get_backtest_results() -> dict:
                             
                             recent_performance_html += f"""
                             <div class="backtest-table-row">
-                                <span class="bt-cell-strategy">{symbol}</span>
+                                <span class="bt-cell-symbol">{symbol}</span>
                                 <span class="bt-cell-return">{total_return:.1%}</span>
                                 <span class="bt-cell-sharpe">{sharpe_ratio:.2f}</span>
                                 <span class="bt-cell-date">{date_str}</span>
@@ -1624,29 +1632,7 @@ def live_dashboard():
         .status-unknown {{
             color: #6c757d !important;
         }}
-        .action-btn {{
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            margin: 5px;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }}
-        .action-btn:hover {{
-            background: #5a6fd8;
-            transform: translateY(-2px);
-        }}
-        .action-btn:disabled {{
-            background: #6c757d;
-            cursor: not-allowed;
-            transform: none;
-        }}
+
         .refresh-btn {{
             background: #28a745;
             color: white;
@@ -1669,30 +1655,7 @@ def live_dashboard():
             opacity: 0.8;
             font-size: 0.9em;
         }}
-        .notification {{
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 20px;
-            border-radius: 8px;
-            color: white;
-            font-weight: 500;
-            z-index: 1000;
-            transform: translateX(400px);
-            transition: transform 0.3s ease;
-        }}
-        .notification.show {{
-            transform: translateX(0);
-        }}
-        .notification.success {{
-            background: #28a745;
-        }}
-        .notification.error {{
-            background: #dc3545;
-        }}
-        .notification.info {{
-            background: #17a2b8;
-        }}
+
         .recent-backtests {{
             margin-top: 20px;
         }}
@@ -2181,7 +2144,7 @@ def live_dashboard():
                     <h4>📈 Recent Strategy Performance</h4>
                     <div class="backtest-table">
                         <div class="backtest-table-header">
-                            <span class="bt-header-symbol">Strategy ID</span>
+                            <span class="bt-header-symbol">Symbol</span>
                             <span class="bt-header-return">Return</span>
                             <span class="bt-header-sharpe">Sharpe</span>
                             <span class="bt-header-date">Date</span>
@@ -2204,185 +2167,16 @@ def live_dashboard():
         </div>
     </div>
     
-    <!-- Notification Container -->
-    <div id="notification-container"></div>
+
     
     <script>
-        // Utility functions
-        function showNotification(message, type = 'info') {{
-            const container = document.getElementById('notification-container');
-            const notification = document.createElement('div');
-            notification.className = `notification ${{type}} show`;
-            notification.textContent = message;
-            container.appendChild(notification);
-            
-            setTimeout(() => {{
-                notification.remove();
-            }}, 5000);
-        }}
+
         
-        function setButtonLoading(button, loading = true) {{
-            if (loading) {{
-                button.disabled = true;
-                button.textContent = '⏳ Loading...';
-            }} else {{
-                button.disabled = false;
-                button.textContent = button.textContent.replace('⏳ Loading...', '⚡ Run Tests');
-            }}
-        }}
+
         
-        // Quick Action Functions
-        async function runTests() {{
-            const button = event.target;
-            setButtonLoading(button, true);
-            
-            try {{
-                showNotification('🧪 Running tests...', 'info');
-                
-                // Run a simple test
-                const response = await fetch('/api/system/tests/run', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ pattern: '', coverage: false, verbose: false }})
-                }});
-                
-                if (response.ok) {{
-                    showNotification('✅ Tests completed successfully!', 'success');
-                    setTimeout(() => location.reload(), 2000);
-                }} else {{
-                    showNotification('❌ Test execution failed', 'error');
-                }}
-            }} catch (error) {{
-                showNotification(`❌ Error: ${{error.message}}`, 'error');
-            }} finally {{
-                setButtonLoading(button, false);
-            }}
-        }}
+
         
-        async function runBacktest() {{
-            const button = event.target;
-            setButtonLoading(button, true);
-            
-            try {{
-                showNotification('📊 Starting backtest...', 'info');
-                
-                const response = await fetch('/api/system/execute', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{
-                        command: 'backtest',
-                        args: {{ symbol: 'BTCUSDT', days: 7, initial_capital: 10000 }}
-                    }})
-                }});
-                
-                if (response.ok) {{
-                    showNotification('✅ Backtest completed successfully!', 'success');
-                    setTimeout(() => location.reload(), 2000);
-                }} else {{
-                    showNotification('❌ Backtest failed', 'error');
-                }}
-            }} catch (error) {{
-                showNotification(`❌ Error: ${{error.message}}`, 'error');
-            }} finally {{
-                setButtonLoading(button, false);
-            }}
-        }}
-        
-        async function collectData() {{
-            const button = event.target;
-            setButtonLoading(button, true);
-            
-            try {{
-                showNotification('📥 Collecting market data...', 'info');
-                
-                const response = await fetch('/api/data/collect/historical', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{
-                        symbol: 'BTCUSDT',
-                        timeframe: '1h',
-                        days: 30
-                    }})
-                }});
-                
-                if (response.ok) {{
-                    showNotification('✅ Data collection completed!', 'success');
-                    setTimeout(() => location.reload(), 2000);
-                }} else {{
-                    showNotification('❌ Data collection failed', 'error');
-                }}
-            }} catch (error) {{
-                showNotification(`❌ Error: ${{error.message}}`, 'error');
-            }} finally {{
-                setButtonLoading(button, false);
-            }}
-        }}
-        
-        async function generateFeatures() {{
-            const button = event.target;
-            setButtonLoading(button, true);
-            
-            try {{
-                showNotification('⚡ Generating features...', 'info');
-                
-                const response = await fetch('/api/features/compute', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{
-                        symbol: 'BTCUSDT',
-                        timeframe: '1h',
-                        days: 30
-                    }})
-                }});
-                
-                if (response.ok) {{
-                    showNotification('✅ Features generated successfully!', 'success');
-                    setTimeout(() => location.reload(), 2000);
-                }} else {{
-                    showNotification('❌ Feature generation failed', 'error');
-                }}
-            }} catch (error) {{
-                showNotification(`❌ Error: ${{error.message}}`, 'error');
-            }} finally {{
-                setButtonLoading(button, false);
-            }}
-        }}
-        
-        async function runMLAnalysis() {{
-            const button = event.target;
-            setButtonLoading(button, true);
-            
-            try {{
-                showNotification('🤖 Running ML analysis...', 'info');
-                
-                const response = await fetch('/api/system/execute', {{
-                    method: 'POST',
-                    headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{
-                        command: 'analyze',
-                        args: {{ symbol: 'BTCUSDT', timeframe: '1h' }}
-                    }})
-                }});
-                
-                if (response.ok) {{
-                    showNotification('✅ ML analysis completed!', 'success');
-                    setTimeout(() => location.reload(), 2000);
-                }} else {{
-                    showNotification('❌ ML analysis failed', 'error');
-                }}
-            }} catch (error) {{
-                showNotification(`❌ Error: ${{error.message}}`, 'error');
-            }} finally {{
-                setButtonLoading(button, false);
-            }}
-        }}
-        
-        // Auto-refresh dashboard every 30 seconds
-        setInterval(() => {{
-            if (!document.querySelector('.action-btn:disabled')) {{
-                location.reload();
-            }}
-        }}, 30000);
+
     </script>
 </body>
 </html>
