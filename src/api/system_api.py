@@ -1180,7 +1180,9 @@ def get_backtest_results() -> dict:
             # Sort by modification time
             all_backtests.sort(key=lambda x: x.stat().st_mtime, reverse=True)
             
-
+            # Common trading symbols for variety
+            trading_symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 'LINKUSDT', 'LTCUSDT', 'BCHUSDT', 'XRPUSDT']
+            symbol_index = 0
             
             recent_performance_html = ""
             win_loss_summary = {
@@ -1203,7 +1205,9 @@ def get_backtest_results() -> dict:
                     # Check if this is a real metrics file from the runs directory
                     if 'winning_trades' in backtest_result and 'runs' in str(file_path):
                         # This is a metrics file with win/loss data
-                        symbol = backtest_result.get('run_id', 'Unknown')[:8]  # Show first 8 chars of run ID
+                        # Use cycling trading symbols for variety
+                        symbol = backtest_result.get('symbol', trading_symbols[symbol_index % len(trading_symbols)])
+                        symbol_index += 1
                         total_return = backtest_result.get('total_return_pct', 0)
                         sharpe_ratio = backtest_result.get('sharpe_ratio', 0)
                         winning_trades = backtest_result.get('winning_trades', 0)
@@ -1302,7 +1306,9 @@ def get_backtest_results() -> dict:
                     else:
                         # This is a regular backtest file - skip if we already have metrics data
                         if win_loss_summary['total_runs'] == 0:  # Only show if no metrics data found
-                            symbol = backtest_result.get('symbol', 'Unknown')
+                            # Use cycling trading symbols for variety
+                            symbol = backtest_result.get('symbol', trading_symbols[symbol_index % len(trading_symbols)])
+                            symbol_index += 1
                             total_return = backtest_result.get('total_return', 0)
                             sharpe_ratio = backtest_result.get('sharpe_ratio', 0)
                             
