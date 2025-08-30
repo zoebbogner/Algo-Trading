@@ -167,10 +167,13 @@ def _check_backend_health(client: LLMClient) -> None:
     """Check backend health and log status."""
     try:
         health = client.healthcheck()
-        if health['status'] == 'healthy':
+        if hasattr(health, 'healthy') and health.healthy:
+            logger.info(f"Backend {client.backend} is healthy")
+        elif hasattr(health, 'status') and health.status == 'healthy':
             logger.info(f"Backend {client.backend} is healthy")
         else:
-            logger.warning(f"Backend {client.backend} health check failed: {health['error']}")
+            error_msg = getattr(health, 'error_message', 'Unknown error') or getattr(health, 'error', 'Unknown error')
+            logger.warning(f"Backend {client.backend} health check failed: {error_msg}")
     except Exception as e:
         logger.warning(f"Health check failed for {client.backend}: {e}")
 
@@ -185,7 +188,22 @@ def healthcheck_all_backends() -> Dict[str, Dict[str, Any]]:
         local_config['backend'] = 'local_llama'
         
         local_client = LocalLlamaClient(local_config)
-        results['local_llama'] = local_client.healthcheck()
+        health_result = local_client.healthcheck()
+        
+        # Convert LLMHealth object to dictionary
+        if hasattr(health_result, 'healthy'):
+            results['local_llama'] = {
+                'status': 'healthy' if health_result.healthy else 'unhealthy',
+                'error': health_result.error_message,
+                'latency_ms': health_result.latency_ms
+            }
+        else:
+            results['local_llama'] = {
+                'status': 'healthy' if health_result.status == 'healthy' else 'unhealthy',
+                'error': getattr(health_result, 'error', None),
+                'latency_ms': getattr(health_result, 'latency_ms', None)
+            }
+        
         local_client.close()
         
     except Exception as e:
