@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Trading Advisory Action Schema",
+  "description": "Structured JSON output for LLM trading recommendations",
+  "type": "object",
+  "required": ["version", "intent", "symbol", "timeframe", "rationale", "action"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version for compatibility tracking",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "example": "1.0.0"
+    },
+    "intent": {
+      "type": "string",
+      "enum": ["analyze", "propose_trade", "explain", "regime_analysis", "risk_assessment"],
+      "description": "Primary purpose of this LLM output"
+    },
+    "symbol": {
+      "type": "string",
+      "description": "Trading symbol (e.g., BTCUSDT, ETHUSDT)",
+      "pattern": "^[A-Z0-9]+$"
+    },
+    "timeframe": {
+      "type": "string",
+      "enum": ["1m", "5m", "15m", "1h", "4h", "1d"],
+      "description": "Analysis timeframe"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Clear explanation of the reasoning behind this action",
+      "minLength": 20,
+      "maxLength": 500
+    },
+    "action": {
+      "type": "object",
+      "required": ["type", "confidence"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["hold", "enter_long", "enter_short", "exit", "reduce_position", "increase_position"],
+          "description": "Recommended trading action"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Confidence level in this recommendation (0.0 = no confidence, 1.0 = absolute certainty)"
+        },
+        "constraints": {
+          "type": "object",
+          "description": "Risk and execution constraints",
+          "properties": {
+            "max_position_size": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Maximum position size as fraction of portfolio (0.0 = no position, 1.0 = 100% of portfolio)"
+            },
+            "stop_loss_pct": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 0.5,
+              "description": "Stop loss percentage from entry price"
+            },
+            "take_profit_pct": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 2.0,
+              "description": "Take profit percentage from entry price"
+            },
+            "time_horizon": {
+              "type": "string",
+              "enum": ["intraday", "swing", "position"],
+              "description": "Expected holding period for this trade"
+            }
+          }
+        },
+        "regime_context": {
+          "type": "object",
+          "description": "Market regime analysis context",
+          "properties": {
+            "regime_type": {
+              "type": "string",
+              "enum": ["trending", "ranging", "volatile", "calm", "breakout", "consolidation"],
+              "description": "Identified market regime"
+            },
+            "regime_confidence": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Confidence in regime classification"
+            },
+            "regime_duration": {
+              "type": "string",
+              "description": "Estimated duration of current regime"
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional context and metadata",
+      "properties": {
+        "analysis_timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this analysis was performed"
+        },
+        "data_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Data sources used for this analysis"
+        },
+        "indicators_used": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Technical indicators considered"
+        },
+        "risk_factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Key risk factors identified"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

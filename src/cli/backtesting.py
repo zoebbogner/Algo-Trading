@@ -19,7 +19,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.core.backtest.engine import BacktestEngine
-from src.utils.config import load_base_config
+from src.utils.config import load_merged_config
 from src.utils.logging import get_logger, setup_logging
 
 
@@ -35,7 +35,7 @@ def backtesting(ctx, config: str, verbose: bool):
     setup_logging(log_level=log_level)
 
     # Load configuration
-    base_config = load_base_config()
+    base_config = load_merged_config()
     ctx.obj = base_config
 
     # Ensure reports directory exists

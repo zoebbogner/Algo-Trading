@@ -1,0 +1,43 @@
+# LLM Configuration for Algo-Trading System
+# This file configures the LLM backend and parameters
+
+# Backend selection (local_llama, openai_like, together, bedrock)
+backend: "local_llama"
+
+# Model configuration
+model: "Meta-Llama-3-8B-Instruct.Q4_0.gguf"
+model_path: ""  # Will be overridden by LLM_INSTRUCT_MODEL_PATH env var
+
+# Generation parameters
+temperature: 0.2          # Low temperature for consistent, structured outputs
+max_tokens: 512          # Reasonable limit for trading recommendations
+stop: []                 # No specific stop sequences
+json_mode: true          # Enforce structured JSON output
+
+# Performance settings
+timeout_s: 30            # 30 second timeout for generation
+retry:
+  max_attempts: 3        # Retry failed requests up to 3 times
+  backoff_initial_ms: 250    # Start with 250ms backoff
+  backoff_max_ms: 2000       # Cap backoff at 2 seconds
+
+# Safety and compliance
+simulation_only: true    # Only operate in simulation mode
+max_position_size: 0.05  # Maximum 5% of portfolio per position
+require_risk_assessment: true  # Always include risk analysis
+
+# Prompt templates
+system_prompt: "src/llm/prompts/system_orchestrator.txt"
+action_template: "src/llm/prompts/action_template.txt"
+
+# Logging and audit
+audit_enabled: true
+log_prompts: true
+log_responses: true
+redact_secrets: true
+
+# Performance monitoring
+track_latency: true
+track_tokens: true
+alert_on_slow_response: true
+slow_response_threshold_ms: 10000  # Alert if response > 10 seconds
