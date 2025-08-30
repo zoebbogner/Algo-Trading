@@ -88,6 +88,18 @@ def root():
     })
 
 
+@app.route('/dashboard', methods=['GET'])
+def dashboard():
+    """Serve the live dashboard."""
+    try:
+        from src.api.system_api import live_dashboard
+        return live_dashboard()
+    except Exception as e:
+        return jsonify({
+            'error': 'Dashboard not available',
+            'message': str(e)
+        }), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     """Overall system health check."""

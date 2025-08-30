@@ -91,15 +91,15 @@ class DataNormalizer:
         return combined_df
 
     def _normalize_timestamps(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Convert timestamps to ISO8601 UTC format."""
+        """Convert timestamps to datetime objects with UTC timezone."""
         # Convert open_time from milliseconds to datetime
         df['ts'] = pd.to_datetime(df['open_time'], unit='ms', utc=True)
 
         # Round to minute close (hh:mm:00Z)
         df['ts'] = df['ts'].dt.floor('min')
 
-        # Convert to ISO8601 string
-        df['ts'] = df['ts'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        # Keep as datetime object (don't convert to string)
+        # df['ts'] = df['ts'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
         return df
 

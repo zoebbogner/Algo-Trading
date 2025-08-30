@@ -1,0 +1,7 @@
+{
+  "command": "python3 -m pytest -v --cov=src --cov-report=html:reports/coverage --cov-report=term-missing tests/",
+  "return_code": 4,
+  "stdout": "",
+  "stderr": "ERROR: usage: __main__.py [options] [file_or_dir] [file_or_dir] [...]\n__main__.py: error: unrecognized arguments: --cov=src --cov-report=html:reports/coverage --cov-report=term-missing\n  inifile: /Users/zoe/Algo-Trading/pyproject.toml\n  rootdir: /Users/zoe/Algo-Trading\n\n",
+  "success": false
+}

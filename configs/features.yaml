@@ -28,7 +28,7 @@ cross_assets:
 
 # Output configuration
 output:
-  path: "data/features/features_1m.parquet"
+  path: "data/features/combined_features_1m.parquet"
   partition_by: ["symbol", "date"]
   compression: "snappy"
 

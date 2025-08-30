@@ -217,9 +217,11 @@ def _create_optimized_prompt(symbol: str, timeframe: str, market_data: Dict[str,
 
 JSON: {{
   "action": "hold|buy|sell",
-  "confidence": 0.0-1.0,
+  "confidence": 0.1-0.95,
   "reason": "brief"
-}}"""
+}}
+
+Be decisive: high confidence (0.8+) for strong signals, medium (0.5-0.7) for moderate signals, low (0.1-0.4) for weak signals."""
     
     logger.info(f"✅ Cost-optimized prompt created ({len(prompt)} characters)")
     return prompt
@@ -364,7 +366,7 @@ def _generate_trading_strategy(client: Any, symbol: str, days: int, max_tokens: 
     """Generate a trading strategy using the LLM."""
     logger.info("🤖 Generating trading strategy")
     
-    prompt = f"""Strategy for {symbol} {days}d: {{
+    prompt = f"""Create trading strategy for {symbol} {days}d. JSON response: {{
   "strategy_type": "trend_following|mean_reversion|breakout",
   "entry_rules": ["rule1", "rule2"],
   "exit_rules": ["rule1", "rule2"],
@@ -460,7 +462,7 @@ def _run_monitoring_loop(client: Any, symbol: str, duration: int, interval: int)
             
             # Quick LLM analysis
             logger.info(f"🤖 Update {update_count}: Generating quick analysis...")
-            prompt = f"{symbol}: ${market_data['current_price']:,.0f}, RSI {market_data['rsi']}, {market_data['trend']}. JSON: {{\"action\": \"hold|buy|sell\", \"confidence\": 0.0-1.0, \"reason\": \"brief\"}}"
+            prompt = f"{symbol}: ${market_data['current_price']:,.0f}, RSI {market_data['rsi']}, {market_data['trend']}. JSON: {{\"action\": \"hold|buy|sell\", \"confidence\": 0.1-0.95, \"reason\": \"brief\"}}. Be decisive: high confidence (0.8+) for strong signals, medium (0.5-0.7) for moderate signals, low (0.1-0.4) for weak signals."
             
             result = _generate_analysis_with_timeout(client, prompt, 15, 60)
             analysis = _process_analysis_result(result, symbol, "1m")
